@@ -32,7 +32,7 @@ class BatchProcess:
                 t_eval=self.df["RTime"].values,
             )
         else:
-            t_eval = np.linspace(self.t_span[0], self.t_span[1], 1000)
+            t_eval = np.linspace(self.t_span[0], self.t_span[1], 10000)
             self.sol = solve_ivp(
                 self.system_ode, self.t_span, [self.X0, self.S0], t_eval=t_eval
             )
