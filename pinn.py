@@ -12,9 +12,11 @@ def numpy_to_tensor(array):
 class PINN(nn.Module):
     def __init__(self, input_dim, output_dim, t_start, t_end):
         super().__init__()
-        self.input = nn.Linear(input_dim, 64)
-        self.hidden = nn.Linear(64, 64)
-        self.output = nn.Linear(64, output_dim)
+        self.input = nn.Linear(input_dim, 16)
+        self.hidden = nn.Linear(16, 32)
+        self.hidden2 = nn.Linear(32, 32)
+        self.hidden3 = nn.Linear(32, 16)
+        self.output = nn.Linear(16, output_dim)
 
         self.mu_max = nn.Parameter(torch.tensor([0.5]))
         self.K_s = nn.Parameter(torch.tensor([0.5]))
@@ -29,6 +31,9 @@ class PINN(nn.Module):
             
     def forward(self, x):
         x = torch.tanh(self.input(x))
+        x = torch.tanh(self.hidden(x))
+        x = torch.tanh(self.hidden2(x))
+        x = torch.tanh(self.hidden3(x))
         x = self.output(x)
         return x
 
@@ -38,7 +43,7 @@ class PINN(nn.Module):
     
     
 def loss_fn(net: torch.nn.Module, t_start, t_end):
-    t = torch.linspace(t_start, t_end, steps=1000).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=2000).view(-1, 1).requires_grad_(True)
     
     u_pred = net.forward(t)
     X_pred = u_pred[:, 0].view(-1,1)
@@ -55,21 +60,22 @@ def loss_fn(net: torch.nn.Module, t_start, t_end):
     error_ode = error_dXdt + error_dSdt
     return error_ode
 
-def train(net, t, X_S, df, verbose=True):
+def train(net, t, X_S, df, num_epochs=1000, verbose=True):
     
     TOTAL_LOSS = []
     LOSS_DATA = []
     LOSS_IC = []
     LOSS_ODE = []
-    optimizer = torch.optim.RMSprop(net.parameters(), lr=5e-3)
-    for epoch in range(5000):
+    optimizer = torch.optim.RMSprop(net.parameters(), lr=5e-4)
+    
+    for epoch in range(num_epochs):
         optimizer.zero_grad()
         u_pred = net.forward(t)
         loss_data = nn.MSELoss()(u_pred, X_S)
         loss_ic = nn.MSELoss()(u_pred[0], X_S[0])
         loss_ode = loss_fn(net, df['RTime'].min(), df['RTime'].max())
         
-        total_loss = loss_data + 0.2*loss_ic + 0.2*loss_ode
+        total_loss = loss_data + loss_ic + loss_ode
         total_loss.backward()
         optimizer.step()
         
