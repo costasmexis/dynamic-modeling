@@ -20,8 +20,6 @@ class PINN(nn.Module):
         self.K_s = nn.Parameter(torch.tensor([0.5]))
         self.Y_xs = nn.Parameter(torch.tensor([0.5]))
 
-        print(f'Initial mu_max: {self.mu_max.item()} | K_s: {self.K_s.item()} | Y_xs: {self.Y_xs.item()}')
-        
         self.t_start = t_start
         self.t_end = t_end
         if isinstance(self.t_start, torch.Tensor):
@@ -57,7 +55,7 @@ def loss_fn(net: torch.nn.Module, t_start, t_end):
     error_ode = error_dXdt + error_dSdt
     return error_ode
 
-def train(net, t, X_S, df):
+def train(net, t, X_S, df, verbose=True):
     
     TOTAL_LOSS = []
     LOSS_DATA = []
@@ -75,8 +73,9 @@ def train(net, t, X_S, df):
         total_loss.backward()
         optimizer.step()
         
-        if epoch % 100 == 0:
-            print(f'Epoch {epoch} || Total Loss: {total_loss.item():.2f}')
+        if verbose:
+            if epoch % 100 == 0:
+                print(f'Epoch {epoch} || Total Loss: {total_loss.item():.2f}')
         
         TOTAL_LOSS.append(total_loss.item())
         LOSS_DATA.append(loss_data.item())
@@ -84,7 +83,7 @@ def train(net, t, X_S, df):
         LOSS_ODE.append(loss_ode.item())
         
         # Early stopping
-        if total_loss.item() < 0.07:
-            break
+        # if total_loss.item() < 0.07:
+            # break
             
     return net, TOTAL_LOSS, LOSS_DATA, LOSS_IC, LOSS_ODE
