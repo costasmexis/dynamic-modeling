@@ -1,13 +1,48 @@
 import numpy as np
 import pandas as pd
+import pyro
+import pyro.distributions as dist
 import torch
 import torch.nn as nn
+from pyro.infer import Predictive
+from pyro.nn import PyroModule, PyroSample
 
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def numpy_to_tensor(array):
     return torch.tensor(array, requires_grad=True, dtype=torch.float32).to(DEVICE).reshape(-1,1)
+
+
+class BPINN(PyroModule):
+    def __init__(self, input_dim, output_dim, t_start, t_end):
+        super().__init__()
+        self.fc1 = PyroModule[nn.Linear](input_dim, 16)
+        self.fc1.weight = PyroSample(dist.Normal(0., 1.).expand([16, input_dim]).to_event(2))
+        self.fc1.bias = PyroSample(dist.Normal(0., 1.).expand([16]).to_event(1))
+        
+        self.fc2 = PyroModule[nn.Linear](16, output_dim)
+        self.fc2.weight = PyroSample(dist.Normal(0., 1.).expand([output_dim, 16]).to_event(2))
+        self.fc2.bias = PyroSample(dist.Normal(0., 1.).expand([output_dim]).to_event(1))
+        self.tanh = nn.Tanh()
+
+        self.t_start = t_start
+        self.t_end = t_end
+        
+        if isinstance(self.t_start, torch.Tensor):
+            self.t_start = self.t_start.item()
+        if isinstance(self.t_end, torch.Tensor):
+            self.t_end = self.t_end.item()
+            
+    def forward(self, x, y=None):
+        x = x.reshape(-1, 1)
+        x = self.tanh(self.fc1(x))
+        
+        mu = self.fc2(x)
+        sigma = pyro.sample("sigma", dist.Uniform(0., 0.1))
+        with pyro.plate("data", x.shape[0]):
+            obs = pyro.sample("obs", dist.Normal(mu, sigma).to_event(1), obs=y)
+        return mu
 
 class PINN(nn.Module):
     def __init__(self, input_dim, output_dim, t_start, t_end):
@@ -42,7 +77,13 @@ class PINN(nn.Module):
         return self.mu_max.item(), self.K_s.item(), self.Y_xs.item()
     
     
-def loss_fn(net: torch.nn.Module, t_start, t_end):
+def loss_ode(net: torch.nn.Module, t_start, t_end):
+
+    if isinstance(t_start, torch.Tensor):
+        t_start = t_start.item()
+    if isinstance(t_end, torch.Tensor):
+        t_end = t_end.item()
+    
     t = torch.linspace(t_start, t_end, steps=2000).view(-1, 1).requires_grad_(True)
     
     u_pred = net.forward(t)
@@ -73,7 +114,7 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
         u_pred = net.forward(t)
         loss_data = nn.MSELoss()(u_pred, X_S)
         loss_ic = nn.MSELoss()(u_pred[0], X_S[0])
-        loss_ode = loss_fn(net, df['RTime'].min(), df['RTime'].max())
+        loss_ode = loss_ode(net, df['RTime'].min(), df['RTime'].max())
         
         total_loss = loss_data + loss_ic + loss_ode
         total_loss.backward()
