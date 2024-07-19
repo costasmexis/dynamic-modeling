@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from pyro.infer import Predictive
 from pyro.nn import PyroModule, PyroSample
+from tqdm import tqdm
 
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,7 +85,7 @@ def loss_ode(net: torch.nn.Module, t_start, t_end):
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
     
-    t = torch.linspace(t_start, t_end, steps=2000).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=500).view(-1, 1).requires_grad_(True)
     
     u_pred = net.forward(t)
     X_pred = u_pred[:, 0].view(-1,1)
@@ -109,25 +110,25 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
     LOSS_ODE = []
     optimizer = torch.optim.RMSprop(net.parameters(), lr=5e-4)
     
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
         u_pred = net.forward(t)
         loss_data = nn.MSELoss()(u_pred, X_S)
         loss_ic = nn.MSELoss()(u_pred[0], X_S[0])
-        loss_ode = loss_ode(net, df['RTime'].min(), df['RTime'].max())
+        loss_pde = loss_ode(net, df['RTime'].min(), df['RTime'].max())
         
-        total_loss = loss_data + loss_ic + loss_ode
+        total_loss = loss_data + loss_ic + loss_pde
         total_loss.backward()
         optimizer.step()
         
         if verbose:
             if epoch % 100 == 0:
-                print(f'Epoch {epoch} || Total Loss: {total_loss.item():.2f}')
+                print(f'Epoch {epoch} || Total Loss: {total_loss.item():.6f}')
         
         TOTAL_LOSS.append(total_loss.item())
         LOSS_DATA.append(loss_data.item())
         LOSS_IC.append(loss_ic.item())
-        LOSS_ODE.append(loss_ode.item())
+        LOSS_ODE.append(loss_pde.item())
         
         # Early stopping
         # if total_loss.item() < 0.07:
