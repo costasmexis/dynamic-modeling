@@ -1,3 +1,6 @@
+import sys
+sys.path.append('../src')
+
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
