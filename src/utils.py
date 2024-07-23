@@ -3,10 +3,25 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from scipy.signal import savgol_filter
+from typing import Tuple
 
 pd.options.mode.chained_assignment = None
 
-def get_data(file_name: str = "./Data.xlsx"):
+def get_data_and_feed(file_name: str, experiment: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    data = get_data(file_name=file_name)
+    df = data.loc[experiment]
+    df = df[df['Process'] != 'B']
+    
+    feeds = pd.read_excel('../data/data_processed.xlsx', sheet_name='Feeds')
+    feeds.drop(columns='index', inplace=True)
+    feeds.columns = ['Time', 'Duration', 'F', 'Induction', 'Label']
+    feeds.set_index('Label', inplace=True)
+    feeds.index.name = None
+    feeds = feeds.loc[experiment]
+    
+    return df, feeds
+
+def get_data(file_name: str) -> pd.DataFrame:
     # Read excel file and see avaialble sheets
     xls = pd.ExcelFile(file_name)
     (xls.sheet_names)
@@ -47,44 +62,44 @@ def plot_experiment(df: pd.DataFrame, title: str) -> None:
     plt.show()
 
 
-def filter_dataset(
-    df: pd.DataFrame, window_length: int, polyorder: int
-) -> pd.DataFrame:
-    induction = df["Induction"].sum()
-    df["Glucose_filter"] = savgol_filter(df["Glucose"], window_length, polyorder)
-    df["Biomass_filter"] = savgol_filter(df["Biomass"], window_length, polyorder)
-    if induction > 0:
-        df["Protein_filter"] = savgol_filter(df["Protein"], window_length, polyorder)
-    return df
+# def filter_dataset(
+#     df: pd.DataFrame, window_length: int, polyorder: int
+# ) -> pd.DataFrame:
+#     induction = df["Induction"].sum()
+#     df["Glucose_filter"] = savgol_filter(df["Glucose"], window_length, polyorder)
+#     df["Biomass_filter"] = savgol_filter(df["Biomass"], window_length, polyorder)
+#     if induction > 0:
+#         df["Protein_filter"] = savgol_filter(df["Protein"], window_length, polyorder)
+#     return df
 
 
-def plot_filter_vs_raw(df: pd.DataFrame, title: str) -> None:
-    induction = df["Induction"].sum()
-    plt.figure(figsize=(12, 3))
-    plt.scatter(df["RTime"], df["Glucose"], c="r", label="Glucose", s=10, alpha=0.5)
-    plt.plot(
-        df["RTime"], df["Glucose_filter"], c="r", label="Glucose filter", linewidth=0.8
-    )
-    plt.scatter(df["RTime"], df["Biomass"], c="g", label="Biomass", s=10, alpha=0.5)
-    plt.plot(
-        df["RTime"], df["Biomass_filter"], c="g", label="Biomass filter", linewidth=0.8
-    )
-    plt.xlabel("Time (hours)")
-    plt.ylabel("Concentration")
-    plt.title(f"Glucose and Biomass {title}")
-    plt.show()
+# def plot_filter_vs_raw(df: pd.DataFrame, title: str) -> None:
+#     induction = df["Induction"].sum()
+#     plt.figure(figsize=(12, 3))
+#     plt.scatter(df["RTime"], df["Glucose"], c="r", label="Glucose", s=10, alpha=0.5)
+#     plt.plot(
+#         df["RTime"], df["Glucose_filter"], c="r", label="Glucose filter", linewidth=0.8
+#     )
+#     plt.scatter(df["RTime"], df["Biomass"], c="g", label="Biomass", s=10, alpha=0.5)
+#     plt.plot(
+#         df["RTime"], df["Biomass_filter"], c="g", label="Biomass filter", linewidth=0.8
+#     )
+#     plt.xlabel("Time (hours)")
+#     plt.ylabel("Concentration")
+#     plt.title(f"Glucose and Biomass {title}")
+#     plt.show()
 
-    if induction > 0:
-        plt.figure(figsize=(12, 3))
-        plt.scatter(df["RTime"], df["Protein"], c="b", label="Protein", s=10, alpha=0.5)
-        plt.plot(
-            df["RTime"],
-            df["Protein_filter"],
-            c="b",
-            label="Protein filter",
-            linewidth=0.8,
-        )
-        plt.xlabel("Time (hours)")
-        plt.ylabel("Concentration")
-        plt.title(f"Protein {title}")
-        plt.show()
+#     if induction > 0:
+#         plt.figure(figsize=(12, 3))
+#         plt.scatter(df["RTime"], df["Protein"], c="b", label="Protein", s=10, alpha=0.5)
+#         plt.plot(
+#             df["RTime"],
+#             df["Protein_filter"],
+#             c="b",
+#             label="Protein filter",
+#             linewidth=0.8,
+#         )
+#         plt.xlabel("Time (hours)")
+#         plt.ylabel("Concentration")
+#         plt.title(f"Protein {title}")
+#         plt.show()
