@@ -10,8 +10,6 @@ pd.options.mode.chained_assignment = None
 def get_data_and_feed(file_name: str, experiment: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     data = get_data(file_name=file_name)
     df = data.loc[experiment]
-    df = df[df['Process'] != 'B']
-    
     feeds = pd.read_excel('../data/data_processed.xlsx', sheet_name='Feeds')
     feeds.drop(columns='index', inplace=True)
     feeds.columns = ['Time', 'Duration', 'F', 'Induction', 'Label']
