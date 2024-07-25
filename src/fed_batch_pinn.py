@@ -65,7 +65,7 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=100).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=250).view(-1, 1).requires_grad_(True)
 
     Sin = 1.43 * 200
 
@@ -91,12 +91,12 @@ def loss_ode(
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
-    # error_dSdt = nn.MSELoss()(
-    #     dSdt_pred, -mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
-    # )
+    error_dSdt = nn.MSELoss()(
+         mu * X_pred / net.Y_xs, F / V_pred * (Sin - S_pred)
+    ) 
     # error_dVdt = nn.MSELoss()(dVdt_pred, F)
 
-    error_ode = error_dXdt 
+    error_ode = error_dXdt + error_dSdt 
     return error_ode
 
 
@@ -121,18 +121,18 @@ def train(
         loss_ic = nn.MSELoss()(u_pred[0], u_train[0])
         loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
 
-        total_loss = loss_data + loss_pde + loss_ic
+        total_loss = loss_data + 0.5 * loss_pde + loss_ic
         total_loss.backward()
         optimizer.step()
 
-        if verbose:
-            if epoch % 100 == 0:
-                print(f"Epoch {epoch} || Total Loss: {total_loss.item():.6f}")
-                print(f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}")
-
+        if verbose and epoch % 100 == 0:
+            print(u_pred)
+            tqdm.write(f"Epoch {epoch} || Total Loss: {total_loss.item():.6f}")
+            tqdm.write(f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}")
+        
         TOTAL_LOSS.append(total_loss.item())
         LOSS_DATA.append(loss_data.item())
         # LOSS_IC.append(loss_ic.item())
         LOSS_ODE.append(loss_pde.item())
-
+        
     return net, TOTAL_LOSS, LOSS_DATA, LOSS_ODE

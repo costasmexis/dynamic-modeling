@@ -36,14 +36,12 @@ def simulate(df, y0, t_span, mu_max, Ks, Yxs):
         X, S, V = y
         
         Sin = 1.43 * 200
-        
         if t < t_fedbatch:
             F = 0
         else:
             F = feeding_strategy(feeds, t)
         
         mu = mu_max * S / (Ks + S)
-        
         dVdt = F
         dXdt = mu * X - X * F / V
         dSdt = - mu * X / Yxs + F / V * (Sin - S)
@@ -93,7 +91,7 @@ V = numpy_to_tensor(df['V'].values)
 u_train = torch.cat((X, S, V), 1)
 
 net, total_loss, loss_data, loss_ode = \
-    train(net, t, u_train, df, feeds, num_epochs=5000, verbose=True)
+    train(net, t, u_train, df, feeds, num_epochs=2500, verbose=True)
     
 # Store the results
 net_df = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose'])
