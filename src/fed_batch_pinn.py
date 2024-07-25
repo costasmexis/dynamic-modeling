@@ -64,7 +64,7 @@ def loss_ode(net: torch.nn.Module, t_start, t_end):
     error_ode = error_dXdt + error_dSdt
     return error_ode
 
-def train(net, t, X_S, df, num_epochs=1000, verbose=True):
+def train(net, t, u_train, df, num_epochs=1000, verbose=True):
     
     TOTAL_LOSS = []
     LOSS_DATA = []
@@ -75,8 +75,8 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
         u_pred = net.forward(t)
-        loss_data = nn.MSELoss()(u_pred, X_S)
-        loss_ic = nn.MSELoss()(u_pred[0], X_S[0])
+        loss_data = nn.MSELoss()(u_pred, u_train)
+        loss_ic = nn.MSELoss()(u_pred[0], u_train[0])
         loss_pde = loss_ode(net, df['RTime'].min(), df['RTime'].max())
         
         total_loss = loss_data + loss_ic + loss_pde
@@ -91,9 +91,5 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
         LOSS_DATA.append(loss_data.item())
         LOSS_IC.append(loss_ic.item())
         LOSS_ODE.append(loss_pde.item())
-        
-        # Early stopping
-        # if total_loss.item() < 0.07:
-            # break
-            
+
     return net, TOTAL_LOSS, LOSS_DATA, LOSS_IC, LOSS_ODE
