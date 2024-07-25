@@ -72,5 +72,51 @@ plt.scatter(df['RTime'], df['Biomass'], c='g', label='X (data)', s=10, alpha=0.5
 plt.scatter(df['RTime'], df['Glucose'], c='r', label='S (data)', s=10, alpha=0.5)
 plt.xlabel('Time (hours)')
 plt.ylabel('Concentration')
+plt.title('Fed-Batch Simulation using ODE')
+plt.legend()
+plt.savefig('plot.png')
+
+# TODO: Implement PINN for Batch and Fed-Batch process
+## PINN
+
+# Keep only FED-BATCH data
+df = df[df['Process'] == 'FB']
+
+net = PINN(1, 3, t_start, t_end)
+
+t_start, t_end = df['RTime'].min(), df['RTime'].max()
+
+t = numpy_to_tensor(df['RTime'].values)
+X = numpy_to_tensor(df['Biomass'].values)
+S = numpy_to_tensor(df['Glucose'].values)
+V = numpy_to_tensor(df['V'].values)
+u_train = torch.cat((X, S, V), 1)
+
+net, total_loss, loss_data, loss_ode = \
+    train(net, t, u_train, df, feeds, num_epochs=5000, verbose=True)
+    
+# Store the results
+net_df = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose'])
+t_test = df['RTime'].values
+net_df['RTime'] = t_test
+t_test = numpy_to_tensor(t_test)
+net_df['Biomass'] = net.forward(t_test).detach().cpu().numpy()[:, 0]
+net_df['Glucose'] = net.forward(t_test).detach().cpu().numpy()[:, 1]
+net_df['V'] = net.forward(t_test).detach().cpu().numpy()[:, 2]
+
+mu_max = net.mu_max.item()
+Ks = net.K_s.item()
+Yxs = net.Y_xs.item()
+
+print(f'mu_max: {mu_max:4f}, Ks: {Ks:4f}, Yxs: {Yxs:.4f}')
+
+plt.figure(figsize=(12, 3))
+plt.plot(net_df['RTime'], net_df['Biomass'], label='X (PINN)')
+plt.plot(net_df['RTime'], net_df['Glucose'], label='S (PINN)')
+plt.scatter(df['RTime'], df['Biomass'], c='g', label='X (data)', s=10, alpha=0.5)
+plt.scatter(df['RTime'], df['Glucose'], c='r', label='S (data)', s=10, alpha=0.5)
+plt.xlabel('Time (hours)')
+plt.ylabel('Concentration')
+plt.title('Fed-Batch Simulation using PINN')
 plt.legend()
 plt.savefig('plot.png')
