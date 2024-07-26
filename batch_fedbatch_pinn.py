@@ -1,18 +1,15 @@
 import sys
+
 sys.path.append('../')
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
 from scipy.integrate import solve_ivp
-from scipy.signal import savgol_filter
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-from src.process import BatchProcess, FedBatchProcess
 from src.fed_batch_pinn import PINN, numpy_to_tensor, train
-from src.utils import get_data_and_feed, feeding_strategy
+from src.utils import feeding_strategy, get_data_and_feed
 
 pd.options.mode.chained_assignment = None
 
@@ -91,7 +88,7 @@ V = numpy_to_tensor(df['V'].values)
 u_train = torch.cat((X, S, V), 1)
 
 net, total_loss, loss_data, loss_ode = \
-    train(net, t, u_train, df, feeds, num_epochs=2500, verbose=True)
+    train(net, t, u_train, df, feeds, num_epochs=2000, verbose=True)
     
 # Store the results
 net_df = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose'])

@@ -28,11 +28,11 @@ class PINN(nn.Module):
         t_end: Union[np.float32, torch.Tensor],
     ):
         super().__init__()
-        self.input = nn.Linear(input_dim, 16)
-        self.hidden = nn.Linear(16, 32)
-        self.hidden2 = nn.Linear(32, 32)
-        self.hidden3 = nn.Linear(32, 16)
-        self.output = nn.Linear(16, output_dim)
+        self.input = nn.Linear(input_dim, 64)
+        self.hidden = nn.Linear(64, 128)
+        self.hidden2 = nn.Linear(128, 128)
+        self.hidden3 = nn.Linear(128, 64)
+        self.output = nn.Linear(64, output_dim)
 
         self.mu_max = nn.Parameter(torch.tensor([0.5]))
         self.K_s = nn.Parameter(torch.tensor([0.5]))
@@ -59,7 +59,8 @@ def loss_ode(
     feeds: pd.DataFrame,
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
-):
+) -> torch.Tensor:
+    
     if isinstance(t_start, torch.Tensor):
         t_start = t_start.item()
     if isinstance(t_end, torch.Tensor):
@@ -81,22 +82,22 @@ def loss_ode(
     dXdt_pred = torch.autograd.grad(
         X_pred, t, grad_outputs=torch.ones_like(X_pred), create_graph=True
     )[0]
-    # dSdt_pred = torch.autograd.grad(
-    #     S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
-    # )[0]
-    # dVdt_pred = torch.autograd.grad(
-    #     V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
-    # )[0]
+    dSdt_pred = torch.autograd.grad(
+        S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
+    )[0]
+    dVdt_pred = torch.autograd.grad(
+        V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
+    )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
-         mu * X_pred / net.Y_xs, F / V_pred * (Sin - S_pred)
-    ) 
-    # error_dVdt = nn.MSELoss()(dVdt_pred, F)
+        dSdt_pred, mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
+    )
+    error_dVdt = nn.MSELoss()(dVdt_pred, F)
 
-    error_ode = error_dXdt + error_dSdt 
+    error_ode = error_dXdt + error_dSdt + error_dVdt
     return error_ode
 
 
@@ -112,27 +113,39 @@ def train(
     TOTAL_LOSS = []
     LOSS_DATA = []
     LOSS_ODE = []
-    optimizer = torch.optim.RMSprop(net.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
-        loss_data = nn.MSELoss()(u_pred, u_train)
+        
+        X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0])
+        S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
+        V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
+        loss_data = X_data_loss + S_data_loss + V_data_loss
+        
+        # loss_data = nn.MSELoss()(u_pred, u_train)
+        
         loss_ic = nn.MSELoss()(u_pred[0], u_train[0])
         loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
 
-        total_loss = loss_data + 0.5 * loss_pde + loss_ic
+        total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
         optimizer.step()
 
         if verbose and epoch % 100 == 0:
-            print(u_pred)
             tqdm.write(f"Epoch {epoch} || Total Loss: {total_loss.item():.6f}")
-            tqdm.write(f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}")
-        
+            tqdm.write(
+                f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
+            )
+            tqdm.write(
+                f"Loss Data: {loss_data.item():.6f}, Loss ODE: {loss_pde.item():.6f}"
+            )
+            print(u_pred)
+
         TOTAL_LOSS.append(total_loss.item())
         LOSS_DATA.append(loss_data.item())
         # LOSS_IC.append(loss_ic.item())
         LOSS_ODE.append(loss_pde.item())
-        
+
     return net, TOTAL_LOSS, LOSS_DATA, LOSS_ODE
