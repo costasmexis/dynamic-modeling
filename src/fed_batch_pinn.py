@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+
 from .utils import feeding_strategy
 
 torch.manual_seed(42)
@@ -82,24 +83,26 @@ def loss_ode(
     dXdt_pred = torch.autograd.grad(
         X_pred, t, grad_outputs=torch.ones_like(X_pred), create_graph=True
     )[0]
-    dSdt_pred = torch.autograd.grad(
-        S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
-    )[0]
-    dVdt_pred = torch.autograd.grad(
-        V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
-    )[0]
+    # dSdt_pred = torch.autograd.grad(
+    #     S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
+    # )[0]
+    # dVdt_pred = torch.autograd.grad(
+    #     V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
+    # )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
-    error_dSdt = nn.MSELoss()(
-        dSdt_pred, mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
-    )
-    error_dVdt = nn.MSELoss()(dVdt_pred, F)
+    # error_dSdt = nn.MSELoss()(
+    #     dSdt_pred, mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
+    # )
+    # error_dVdt = nn.MSELoss()(dVdt_pred, F)
 
-    error_ode = error_dXdt + error_dSdt + error_dVdt
+    error_ode = error_dXdt #+ error_dSdt 
     return error_ode
 
+
+    
 
 def train(
     net: nn.Module,
@@ -109,24 +112,27 @@ def train(
     feeds: pd.DataFrame,
     num_epochs: int = 1000,
     verbose: bool = True,
-):
-    TOTAL_LOSS = []
-    LOSS_DATA = []
-    LOSS_ODE = []
+) -> nn.Module:
+    
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
         
+        # Data loss
         X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0])
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
         V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
         loss_data = X_data_loss + S_data_loss + V_data_loss
         
-        # loss_data = nn.MSELoss()(u_pred, u_train)
+        # Initial condition loss
+        X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
+        S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
+        V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
+        loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
-        loss_ic = nn.MSELoss()(u_pred[0], u_train[0])
+        # ODE loss
         loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
 
         total_loss = loss_data + loss_pde + loss_ic
@@ -134,18 +140,12 @@ def train(
         optimizer.step()
 
         if verbose and epoch % 100 == 0:
-            tqdm.write(f"Epoch {epoch} || Total Loss: {total_loss.item():.6f}")
+            tqdm.write(f"Epoch {epoch} || Total Loss: {total_loss.item():.4f}, Loss Data: {loss_data.item():.4f}, Loss ODE: {loss_pde.item():.4f}, Loss IC: {loss_ic.item():.4f}")
             tqdm.write(
-                f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
+            f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
-            tqdm.write(
-                f"Loss Data: {loss_data.item():.6f}, Loss ODE: {loss_pde.item():.6f}"
-            )
+            
+        if verbose and epoch % 1000 == 0:
             print(u_pred)
 
-        TOTAL_LOSS.append(total_loss.item())
-        LOSS_DATA.append(loss_data.item())
-        # LOSS_IC.append(loss_ic.item())
-        LOSS_ODE.append(loss_pde.item())
-
-    return net, TOTAL_LOSS, LOSS_DATA, LOSS_ODE
+    return net
