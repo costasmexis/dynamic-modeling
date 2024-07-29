@@ -16,7 +16,7 @@ pd.options.mode.chained_assignment = None
 np.set_printoptions(precision=4)
 
 FILENAME = "./data/data_processed.xlsx"
-EXPERIMENT = "BR01"
+EXPERIMENT = "BR07"
 
 
 def plot_results(
@@ -119,4 +119,4 @@ def main(
 
 if __name__ == "__main__":
     print("Training PINN for Fed-Batch Process")
-    main(num_epochs=5000)
+    main(num_epochs=10000)

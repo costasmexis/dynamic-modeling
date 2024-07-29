@@ -30,9 +30,9 @@ class PINN(nn.Module):
     ):
         super().__init__()
         self.input = nn.Linear(input_dim, 64)
-        self.hidden = nn.Linear(64, 128)
-        self.hidden2 = nn.Linear(128, 128)
-        self.hidden3 = nn.Linear(128, 64)
+        self.hidden = nn.Linear(64, 256)
+        self.hidden2 = nn.Linear(256, 256)
+        self.hidden3 = nn.Linear(256, 64)
         self.output = nn.Linear(64, output_dim)
 
         self.mu_max = nn.Parameter(torch.tensor([0.5]))
@@ -47,10 +47,10 @@ class PINN(nn.Module):
             self.t_end = self.t_end.item()
 
     def forward(self, x):
-        x = torch.tanh(self.input(x))
-        x = torch.tanh(self.hidden(x))
-        x = torch.tanh(self.hidden2(x))
-        x = torch.tanh(self.hidden3(x))
+        x = torch.relu(self.input(x))
+        x = torch.relu(self.hidden(x))
+        x = torch.relu(self.hidden2(x))
+        x = torch.relu(self.hidden3(x))
         x = self.output(x)
         return x
 
@@ -67,7 +67,7 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=250).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=50).view(-1, 1).requires_grad_(True)
 
     Sin = 1.43 * 200
 
@@ -83,9 +83,9 @@ def loss_ode(
     dXdt_pred = torch.autograd.grad(
         X_pred, t, grad_outputs=torch.ones_like(X_pred), create_graph=True
     )[0]
-    # dSdt_pred = torch.autograd.grad(
-    #     S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
-    # )[0]
+    dSdt_pred = torch.autograd.grad(
+        S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
+    )[0]
     # dVdt_pred = torch.autograd.grad(
     #     V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
     # )[0]
@@ -93,16 +93,13 @@ def loss_ode(
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
-    # error_dSdt = nn.MSELoss()(
-    #     dSdt_pred, mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
-    # )
+    error_dSdt = nn.MSELoss()(
+        dSdt_pred, mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
+    )
     # error_dVdt = nn.MSELoss()(dVdt_pred, F)
 
-    error_ode = error_dXdt #+ error_dSdt 
+    error_ode = error_dXdt + error_dSdt #+ error_dVdt
     return error_ode
-
-
-    
 
 def train(
     net: nn.Module,
@@ -114,7 +111,7 @@ def train(
     verbose: bool = True,
 ) -> nn.Module:
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
@@ -145,7 +142,4 @@ def train(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
             
-        if verbose and epoch % 1000 == 0:
-            print(u_pred)
-
     return net
