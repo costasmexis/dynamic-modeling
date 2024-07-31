@@ -50,11 +50,17 @@ class PINN(nn.Module):
         if isinstance(self.t_end, torch.Tensor):
             self.t_end = self.t_end.item()
 
+        # Initialize weights
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.zeros_(m.bias)
+
     def forward(self, x):
-        x = torch.relu(self.input(x))
-        x = torch.relu(self.hidden(x))
-        x = torch.relu(self.hidden2(x))
-        x = torch.relu(self.hidden3(x))
+        x = torch.nn.LeakyReLU()(self.input(x))
+        x = torch.nn.LeakyReLU()(self.hidden(x))
+        x = torch.nn.LeakyReLU()(self.hidden2(x))
+        x = torch.nn.LeakyReLU()(self.hidden3(x))
         x = self.output(x)
         return x
 
@@ -70,7 +76,7 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=50).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=25).view(-1, 1).requires_grad_(True)
 
     Sin = 1.43 * 200
 
@@ -121,24 +127,25 @@ def train(
     verbose: bool = True,
 ) -> nn.Module:
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
         
         # Data loss
-        X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0])
+        X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0]) * 0.2
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
         V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
         P_data_loss = nn.MSELoss()(u_pred[:, 3], u_train[:, 3])
-        loss_data = 0.5*X_data_loss + S_data_loss + V_data_loss + P_data_loss
+        loss_data = X_data_loss + S_data_loss + V_data_loss + P_data_loss
         
         # Initial condition loss
-        X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
+        X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0]) * 0.2
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
         V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
-        loss_ic = 0.5*X_IC_loss + S_IC_loss + V_IC_loss
+        P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])
+        loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
         # ODE loss
         loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
@@ -147,9 +154,17 @@ def train(
         total_loss.backward()
         optimizer.step()
 
-        if verbose and epoch % 1000 == 0:
+        if verbose and epoch % 250 == 0:
+            print(f'X_data_loss: {X_data_loss.item()}')
+            print(f'S_data_loss: {S_data_loss.item()}')
             print(f'V_data_loss: {V_data_loss.item()}')
+            print(f'P_data_loss: {P_data_loss.item()}')
+            
+            print(f'X_IC_loss: {X_IC_loss.item()}')
+            print(f'S_IC_loss: {S_IC_loss.item()}')
             print(f'V_IC_loss: {V_IC_loss.item()}')
+            print(f'P_IC_loss: {P_IC_loss.item()}')
+            
             print(u_pred[:,2])
                         
     return net
