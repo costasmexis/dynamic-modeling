@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
+from .utils import feeding_strategy
+
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,14 +29,11 @@ class PINN(nn.Module):
         t_end: Union[np.float32, torch.Tensor],
     ):
         super().__init__()
-        self.input = nn.Linear(input_dim, 128)
-        self.hidden = nn.Linear(128, 512)
-        self.hidden2 = nn.Linear(512, 512)
-        self.hidden3 = nn.Linear(512, 128)
-        self.output = nn.Linear(128, output_dim)
-
-        self.c1 = nn.Parameter(torch.tensor([0.1]))
-        self.c2 = nn.Parameter(torch.tensor([0.1]))
+        self.input = nn.Linear(input_dim, 64)
+        self.hidden = nn.Linear(64, 256)
+        self.hidden2 = nn.Linear(256, 256)
+        self.hidden3 = nn.Linear(256, 64)
+        self.output = nn.Linear(64, output_dim)
 
         self.mu_max = torch.tensor([0.870], dtype=torch.float32)
         self.K_s = torch.tensor([0.214], dtype=torch.float32)
@@ -58,7 +57,7 @@ class PINN(nn.Module):
 
 def loss_ode(
     net: torch.nn.Module,
-    F,
+    feeds: pd.DataFrame,
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
 ) -> torch.Tensor:
@@ -71,14 +70,13 @@ def loss_ode(
 
     Sin = 1.43 * 200
 
-    F = torch.tensor(
-        [F for _ in range(t.shape[0])], requires_grad=True, dtype=torch.float32
-    ).view(-1, 1)
+    F = torch.tensor([feeding_strategy(feeds, t) for t in t], dtype=torch.float32).view(
+        -1, 1
+    )
 
     u_pred = net.forward(t)
     X_pred = u_pred[:, 0].view(-1, 1)
     S_pred = u_pred[:, 1].view(-1, 1)
-    P_pred = u_pred[:, 2].view(-1, 1)
     V_pred = u_pred[:, 3].view(-1, 1)
 
     dXdt_pred = torch.autograd.grad(
@@ -87,22 +85,19 @@ def loss_ode(
     dSdt_pred = torch.autograd.grad(
         S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
     )[0]
-    dPdt_pred = torch.autograd.grad(
-        P_pred, t, grad_outputs=torch.ones_like(P_pred), create_graph=True
+    dVdt_pred = torch.autograd.grad(
+        V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
     )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
 
-    alpha = net.c1 * (1 - torch.exp(-net.c2 * t))
-
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
-        dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
+        dSdt_pred, -mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
-    error_dPdt = nn.MSELoss()(dPdt_pred, alpha * mu * X_pred - F * P_pred / V_pred)
-    error_dVdt = nn.MSELoss()(V_pred, F)
+    error_dVdt = nn.MSELoss()(dVdt_pred, F)
 
-    error_ode = error_dXdt + error_dSdt + error_dPdt + error_dVdt
+    error_ode = error_dXdt + error_dSdt + error_dVdt
     return error_ode
 
 
@@ -111,10 +106,11 @@ def train(
     t_train: torch.Tensor,
     u_train: torch.Tensor,
     df: pd.DataFrame,
-    F,
+    feeds: pd.DataFrame,
     num_epochs: int = 1000,
     verbose: bool = True,
 ) -> nn.Module:
+    
     optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
 
     for epoch in tqdm(range(num_epochs)):
@@ -136,17 +132,15 @@ def train(
         loss_ic = X_IC_loss + S_IC_loss + P_IC_loss + V_IC_loss
 
         # ODE loss
-        loss_pde = loss_ode(net, F, df["RTime"].min(), df["RTime"].max())
+        loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
 
-        # Total loss
         total_loss = loss_data + loss_pde + loss_ic
-
-        if verbose and epoch % 1000 == 0:
-            print(
-                f"Epoch {epoch} || Total Loss: {total_loss.item():.6f} | Data Loss: {loss_data.item():.6f} | IC Loss: {loss_ic.item():.6f} | ODE Loss: {loss_pde.item():.6f}"
-            )
-
         total_loss.backward()
         optimizer.step()
+
+        if verbose and epoch % 100 == 0:
+            tqdm.write(
+                f"Epoch {epoch} || Total Loss: {total_loss.item():.4f}, Loss Data: {loss_data.item():.4f}, Loss ODE: {loss_pde.item():.4f}, Loss IC: {loss_ic.item():.4f}"
+            )
 
     return net
