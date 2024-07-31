@@ -127,23 +127,23 @@ def train(
     verbose: bool = True,
 ) -> nn.Module:
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
         
         # Data loss
-        X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0]) * 0.2
+        X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0]) 
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
-        V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
+        V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2]) * 25
         P_data_loss = nn.MSELoss()(u_pred[:, 3], u_train[:, 3])
         loss_data = X_data_loss + S_data_loss + V_data_loss + P_data_loss
         
         # Initial condition loss
-        X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0]) * 0.2
+        X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0]) 
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
-        V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
+        V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2]) * 25
         P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
