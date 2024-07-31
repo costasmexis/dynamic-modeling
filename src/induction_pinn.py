@@ -82,6 +82,7 @@ def loss_ode(
     X_pred = u_pred[:, 0].view(-1, 1)
     S_pred = u_pred[:, 1].view(-1, 1)
     V_pred = u_pred[:, 2].view(-1, 1)
+    P_pred = u_pred[:, 3].view(-1, 1)
 
     dXdt_pred = torch.autograd.grad(
         X_pred, t, grad_outputs=torch.ones_like(X_pred), create_graph=True
@@ -92,16 +93,22 @@ def loss_ode(
     dVdt_pred = torch.autograd.grad(
         V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
     )[0]
+    dPdt_pred = torch.autograd.grad(
+        P_pred, t, grad_outputs=torch.ones_like(P_pred), create_graph=True
+    )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
+    alpha = net.c1 * (1 - torch.exp(-net.c2 * t**2))
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
         dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
     error_dVdt = nn.MSELoss()(dVdt_pred, F)
+    error_dPdt = nn.MSELoss()(dPdt_pred, alpha * X_pred - P_pred * F / V_pred)
 
-    error_ode = error_dXdt + error_dSdt + error_dVdt
+
+    error_ode = error_dXdt + error_dSdt + error_dVdt + error_dPdt
     return error_ode
 
 def train(
@@ -124,7 +131,8 @@ def train(
         X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0])
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
         V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
-        loss_data = 0.5*X_data_loss + S_data_loss + V_data_loss
+        P_data_loss = nn.MSELoss()(u_pred[:, 3], u_train[:, 3])
+        loss_data = 0.5*X_data_loss + S_data_loss + V_data_loss + P_data_loss
         
         # Initial condition loss
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
