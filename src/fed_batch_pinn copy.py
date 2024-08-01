@@ -86,9 +86,9 @@ def loss_ode(
     dSdt_pred = torch.autograd.grad(
         S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
     )[0]
-    dVdt_pred = torch.autograd.grad(
-        V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
-    )[0]
+    # dVdt_pred = torch.autograd.grad(
+    #     V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
+    # )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
 
@@ -96,7 +96,7 @@ def loss_ode(
     error_dSdt = nn.MSELoss()(
         dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
-    error_dVdt = nn.MSELoss()(dVdt_pred, F)
+    # error_dVdt = nn.MSELoss()(dVdt_pred, F)
 
     error_ode = error_dXdt + error_dSdt #+ error_dVdt
     return error_ode
@@ -136,20 +136,10 @@ def train(
         total_loss.backward()
         optimizer.step()
 
-        if epoch == 0:
-            if (u_pred < 0).any():
-                raise ValueError("u_pred has negative values")
-
-        if verbose and epoch % 250 == 0:
+        if verbose and epoch % 100 == 0:
+            tqdm.write(f"Epoch {epoch} || Total Loss: {total_loss.item():.4f}, Loss Data: {loss_data.item():.4f}, Loss ODE: {loss_pde.item():.4f}, Loss IC: {loss_ic.item():.4f}")
             tqdm.write(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
-            tqdm.write(f'X_data_loss = {X_data_loss.item():.4f}')
-            tqdm.write(f'S_data_loss = {S_data_loss.item():.4f}')
-            tqdm.write(f'V_data_loss = {V_data_loss.item():.4f}')
-            tqdm.write(f'X_IC_loss = {X_IC_loss.item():.4f}')
-            tqdm.write(f'S_IC_loss = {S_IC_loss.item():.4f}')
-            tqdm.write(f'V_IC_loss = {V_IC_loss.item():.4f}')
-            tqdm.write(f'error_ode = {loss_pde.item():.4f}')
-                        
+            
     return net
