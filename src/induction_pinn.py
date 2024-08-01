@@ -42,6 +42,8 @@ class PINN(nn.Module):
 
         # Protein modeling
         self.c1 = nn.Parameter(torch.tensor([0.1]))
+        self.c2 = nn.Parameter(torch.tensor([0.1]))
+        self.c3 = nn.Parameter(torch.tensor([0.1]))
         
         self.t_start = t_start
         self.t_end = t_end
@@ -100,13 +102,15 @@ def loss_ode(
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
     alpha = net.c1
+    beta = net.c1 * (1 - torch.exp( - net.c2 * t**2 + net.c3 * t))
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
         dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
     error_dVdt = nn.MSELoss()(dVdt_pred, F)
-    error_dPdt = nn.MSELoss()(dPdt_pred, alpha *mu * X_pred - P_pred * F / V_pred)
+    # error_dPdt = nn.MSELoss()(dPdt_pred, alpha *mu * X_pred - P_pred * F / V_pred)
+    error_dPdt = nn.MSELoss()(dPdt_pred, beta * mu * X_pred - P_pred * F / V_pred)
 
     error_ode = error_dXdt + error_dSdt + error_dVdt + error_dPdt
     return error_ode
@@ -139,8 +143,9 @@ def train(
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
         V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
+        # P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])   
         
-        loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
+        loss_ic = X_IC_loss + S_IC_loss + V_IC_loss #+ P_IC_loss
         
         # ODE loss
         loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
@@ -156,8 +161,7 @@ def train(
 
         if verbose > 0 and epoch % verbose == 0:
             tqdm.write(
-            f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}, \
-                c1: {net.c1.item():.4f}"
+            f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}, c1: {net.c1.item():.4f}, c2: {net.c2.item():.4f}"  
             )
             tqdm.write(f'X_data_loss = {X_data_loss.item():.4f}')
             tqdm.write(f'S_data_loss = {S_data_loss.item():.4f}')
@@ -167,6 +171,8 @@ def train(
             tqdm.write(f'X_IC_loss = {X_IC_loss.item():.4f}')
             tqdm.write(f'S_IC_loss = {S_IC_loss.item():.4f}')
             tqdm.write(f'V_IC_loss = {V_IC_loss.item():.4f}')
+            # tqdm.write(f'P_IC_loss = {P_IC_loss.item():.4f}')
+            
             tqdm.write(f'error_ode = {loss_pde.item():.4f}')
                         
     return net
