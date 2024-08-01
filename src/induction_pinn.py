@@ -49,7 +49,7 @@ class PINN(nn.Module):
     def forward(self, x):
         x = torch.relu(self.input(x))
         x = torch.relu(self.hidden(x))
-        x = torch.relu(self.hidden2(x))
+        # x = torch.relu(self.hidden2(x))
         x = torch.relu(self.hidden3(x))
         x = self.output(x)
         return x
@@ -98,7 +98,7 @@ def loss_ode(
     )
     error_dVdt = nn.MSELoss()(dVdt_pred, F)
 
-    error_ode = error_dXdt + error_dSdt #+ error_dVdt
+    error_ode = error_dXdt + error_dSdt + error_dVdt
     return error_ode
 
 def train(
@@ -108,7 +108,7 @@ def train(
     df: pd.DataFrame,
     feeds: pd.DataFrame,
     num_epochs: int = 1000,
-    verbose: bool = True,
+    verbose: int = 0,
 ) -> nn.Module:
     
     optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
@@ -137,10 +137,11 @@ def train(
         optimizer.step()
 
         if epoch == 0:
+            # Checking that the initialization of the ANN results in positive values for the state variables
             if (u_pred < 0).any():
                 raise ValueError("u_pred has negative values")
 
-        if verbose and epoch % 250 == 0:
+        if verbose > 0 and epoch % verbose == 0:
             tqdm.write(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
