@@ -35,10 +35,14 @@ class PINN(nn.Module):
         self.hidden3 = nn.Linear(256, 64)
         self.output = nn.Linear(64, output_dim)
 
+        # Kinetic parameters
         self.mu_max = nn.Parameter(torch.tensor([0.5]))
         self.K_s = nn.Parameter(torch.tensor([0.5]))
         self.Y_xs = nn.Parameter(torch.tensor([0.5]))
 
+        # Protein modeling
+        self.c1 = nn.Parameter(torch.tensor([0.1]))
+        
         self.t_start = t_start
         self.t_end = t_end
         if isinstance(self.t_start, torch.Tensor):
@@ -79,6 +83,7 @@ def loss_ode(
     X_pred = u_pred[:, 0].view(-1, 1)
     S_pred = u_pred[:, 1].view(-1, 1)
     V_pred = u_pred[:, 2].view(-1, 1)
+    P_pred = u_pred[:, 3].view(-1, 1)
 
     dXdt_pred = torch.autograd.grad(
         X_pred, t, grad_outputs=torch.ones_like(X_pred), create_graph=True
@@ -89,16 +94,21 @@ def loss_ode(
     dVdt_pred = torch.autograd.grad(
         V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
     )[0]
+    dPdt_pred = torch.autograd.grad(
+        P_pred, t, grad_outputs=torch.ones_like(P_pred), create_graph=True
+    )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
+    alpha = net.c1
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
         dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
     error_dVdt = nn.MSELoss()(dVdt_pred, F)
+    error_dPdt = nn.MSELoss()(dPdt_pred, alpha *mu * X_pred - P_pred * F / V_pred)
 
-    error_ode = error_dXdt + error_dSdt + error_dVdt
+    error_ode = error_dXdt + error_dSdt + error_dVdt + error_dPdt
     return error_ode
 
 def train(
@@ -121,12 +131,15 @@ def train(
         X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0])
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
         V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
-        loss_data = X_data_loss + S_data_loss + V_data_loss
+        P_data_loss = nn.MSELoss()(u_pred[:, 3], u_train[:, 3])
+        
+        loss_data = X_data_loss + S_data_loss + V_data_loss + P_data_loss
         
         # Initial condition loss
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
         V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
+        
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
         # ODE loss
@@ -135,7 +148,7 @@ def train(
         total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
         optimizer.step()
-
+        
         if epoch == 0:
             # Checking that the initialization of the ANN results in positive values for the state variables
             if (u_pred < 0).any():
@@ -143,11 +156,14 @@ def train(
 
         if verbose > 0 and epoch % verbose == 0:
             tqdm.write(
-            f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
+            f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}, \
+                c1: {net.c1.item():.4f}"
             )
             tqdm.write(f'X_data_loss = {X_data_loss.item():.4f}')
             tqdm.write(f'S_data_loss = {S_data_loss.item():.4f}')
             tqdm.write(f'V_data_loss = {V_data_loss.item():.4f}')
+            tqdm.write(f'P_data_loss = {P_data_loss.item():.4f}')
+            
             tqdm.write(f'X_IC_loss = {X_IC_loss.item():.4f}')
             tqdm.write(f'S_IC_loss = {S_IC_loss.item():.4f}')
             tqdm.write(f'V_IC_loss = {V_IC_loss.item():.4f}')
