@@ -127,7 +127,7 @@ def train(
     verbose: bool = True,
 ) -> nn.Module:
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=5e-5)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
@@ -136,14 +136,14 @@ def train(
         # Data loss
         X_data_loss = nn.MSELoss()(u_pred[:, 0], u_train[:, 0]) 
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
-        V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2]) * 25
+        V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2]) * 100
         P_data_loss = nn.MSELoss()(u_pred[:, 3], u_train[:, 3])
         loss_data = X_data_loss + S_data_loss + V_data_loss + P_data_loss
         
         # Initial condition loss
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0]) 
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
-        V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2]) * 25
+        V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2]) * 100
         P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
@@ -154,7 +154,7 @@ def train(
         total_loss.backward()
         optimizer.step()
 
-        if verbose and epoch % 250 == 0:
+        if verbose and epoch % 1000 == 0:
             print(f'X_data_loss: {X_data_loss.item()}')
             print(f'S_data_loss: {S_data_loss.item()}')
             print(f'V_data_loss: {V_data_loss.item()}')
@@ -165,6 +165,8 @@ def train(
             print(f'V_IC_loss: {V_IC_loss.item()}')
             print(f'P_IC_loss: {P_IC_loss.item()}')
             
-            print(u_pred[:,2])
-                        
+            if torch.mean(u_pred[:,2]) > 0:
+                print('*** Positive V predictions')
+                print(f'*** Max Biomass pred: {torch.max(u_pred[:,0]).item()}')
+                                                        
     return net
