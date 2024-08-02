@@ -32,8 +32,8 @@ class PINN(nn.Module):
         self.input = nn.Linear(input_dim, 64)
         self.hidden = nn.Linear(64, 256)
         self.hidden2 = nn.Linear(256, 256)
-        self.hidden3 = nn.Linear(256, 64)
-        self.output = nn.Linear(64, output_dim)
+        self.hidden3 = nn.Linear(256, 16)
+        self.output = nn.Linear(16, output_dim)
 
         # Kinetic parameters
         self.mu_max = nn.Parameter(torch.tensor([0.5]))
@@ -137,7 +137,7 @@ def train(
     verbose: int = 0,
 ) -> nn.Module:
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=5e-5)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
@@ -162,7 +162,7 @@ def train(
         # ODE loss
         loss_pde = loss_ode(net, scf, feeds, df["RTime"].min(), df["RTime"].max())
 
-        total_loss = loss_data + loss_pde + loss_ic
+        total_loss = loss_data + loss_pde + 3 * loss_ic
         total_loss.backward()
         optimizer.step()
         
