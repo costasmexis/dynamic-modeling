@@ -44,6 +44,7 @@ class PINN(nn.Module):
         self.c1 = nn.Parameter(torch.tensor([0.1]))
         self.c2 = nn.Parameter(torch.tensor([0.1]))
         self.c3 = nn.Parameter(torch.tensor([0.1]))
+        self.c4 = nn.Parameter(torch.tensor([0.1]))
         
         self.t_start = t_start
         self.t_end = t_end
@@ -109,7 +110,7 @@ def loss_ode(
     elif scf == 2:
         alpha = net.c1 * (1 - torch.exp( - net.c2 * t**2 + net.c3 * t))
     elif scf == 3:
-        pass
+        alpha = net.c1 * (1 - torch.exp(-net.c2*t)) + net.c3 * (1 - torch.exp(-net.c4*t))
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
@@ -150,6 +151,7 @@ def train(
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
         V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
+        ## IC loss for P resutls in bad results
         # P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])   
         
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss #+ P_IC_loss
