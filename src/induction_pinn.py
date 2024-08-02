@@ -55,7 +55,8 @@ class PINN(nn.Module):
     def forward(self, x):
         x = torch.relu(self.input(x))
         x = torch.relu(self.hidden(x))
-        # x = torch.relu(self.hidden2(x))
+        x = torch.relu(self.hidden2(x))
+        x = torch.relu(self.hidden2(x))
         x = torch.relu(self.hidden3(x))
         x = self.output(x)
         return x
@@ -63,6 +64,7 @@ class PINN(nn.Module):
 
 def loss_ode(
     net: torch.nn.Module,
+    scf: int,
     feeds: pd.DataFrame,
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
@@ -101,22 +103,27 @@ def loss_ode(
     )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
-    alpha = net.c1
-    beta = net.c1 * (1 - torch.exp( - net.c2 * t**2 + net.c3 * t))
+    
+    if scf == 1:
+        alpha = net.c1
+    elif scf == 2:
+        alpha = net.c1 * (1 - torch.exp( - net.c2 * t**2 + net.c3 * t))
+    elif scf == 3:
+        pass
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
         dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
     error_dVdt = nn.MSELoss()(dVdt_pred, F)
-    # error_dPdt = nn.MSELoss()(dPdt_pred, alpha *mu * X_pred - P_pred * F / V_pred)
-    error_dPdt = nn.MSELoss()(dPdt_pred, beta * mu * X_pred - P_pred * F / V_pred)
+    error_dPdt = nn.MSELoss()(dPdt_pred, alpha *mu * X_pred - P_pred * F / V_pred)
 
     error_ode = error_dXdt + error_dSdt + error_dVdt + error_dPdt
     return error_ode
 
 def train(
     net: nn.Module,
+    scf: int, 
     t_train: torch.Tensor,
     u_train: torch.Tensor,
     df: pd.DataFrame,
@@ -148,7 +155,7 @@ def train(
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss #+ P_IC_loss
         
         # ODE loss
-        loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
+        loss_pde = loss_ode(net, scf, feeds, df["RTime"].min(), df["RTime"].max())
 
         total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
