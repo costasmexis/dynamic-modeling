@@ -28,7 +28,7 @@ class PINN(nn.Module):
         t_start: Union[np.float32, torch.Tensor],
         t_end: Union[np.float32, torch.Tensor],
     ):
-        super().__init__()
+        super(PINN, self).__init__()
         self.input = nn.Linear(input_dim, 64)
         self.hidden = nn.Linear(64, 256)
         self.hidden2 = nn.Linear(256, 256)
@@ -61,7 +61,11 @@ class PINN(nn.Module):
         x = torch.relu(self.hidden3(x))
         x = self.output(x)
         return x
-
+    
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_uniform_(m.weight)
+        nn.init.zeros_(m.bias)
 
 def loss_ode(
     net: torch.nn.Module,
