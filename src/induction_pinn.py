@@ -114,7 +114,7 @@ def loss_ode(
     elif scf == 2:
         alpha = net.c1 * (1 - torch.exp( - net.c2 * t**2 + net.c3 * t))
     elif scf == 3:
-        alpha = net.c1 * (1 - torch.exp(-net.c2*t)) + net.c3 * (1 - torch.exp(-net.c4*t))
+        alpha = net.c1 * (1 - torch.exp(-net.c2*t**2)) + net.c3 * (1 - torch.exp(-net.c4*t**2))
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
     error_dSdt = nn.MSELoss()(
@@ -155,9 +155,8 @@ def train(
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
         V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
-        ## IC loss for P resutls in bad results
-        # P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])   
-        
+        P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])   
+
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss #+ P_IC_loss
         
         # ODE loss
@@ -176,16 +175,16 @@ def train(
             tqdm.write(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}, c1: {net.c1.item():.4f}, c2: {net.c2.item():.4f}"  
             )
-            tqdm.write(f'X_data_loss = {X_data_loss.item():.4f}')
-            tqdm.write(f'S_data_loss = {S_data_loss.item():.4f}')
-            tqdm.write(f'V_data_loss = {V_data_loss.item():.4f}')
-            tqdm.write(f'P_data_loss = {P_data_loss.item():.4f}')
+            tqdm.write(f'X_data_loss = {X_data_loss.item():.2f}')
+            tqdm.write(f'S_data_loss = {S_data_loss.item():.2f}')
+            tqdm.write(f'V_data_loss = {V_data_loss.item():.2f}')
+            tqdm.write(f'P_data_loss = {P_data_loss.item():.2f}')
             
-            tqdm.write(f'X_IC_loss = {X_IC_loss.item():.4f}')
-            tqdm.write(f'S_IC_loss = {S_IC_loss.item():.4f}')
-            tqdm.write(f'V_IC_loss = {V_IC_loss.item():.4f}')
-            # tqdm.write(f'P_IC_loss = {P_IC_loss.item():.4f}')
+            tqdm.write(f'X_IC_loss = {X_IC_loss.item():.2f}')
+            tqdm.write(f'S_IC_loss = {S_IC_loss.item():.2f}')
+            tqdm.write(f'V_IC_loss = {V_IC_loss.item():.2f}')
+            tqdm.write(f'P_IC_loss = {P_IC_loss.item():.2f}')
             
-            tqdm.write(f'error_ode = {loss_pde.item():.4f}')
+            tqdm.write(f'error_ode = {loss_pde.item():.2f}')
                         
     return net
