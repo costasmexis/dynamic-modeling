@@ -50,6 +50,7 @@ class PINN(nn.Module):
         x = torch.relu(self.input(x))
         x = torch.relu(self.hidden(x))
         x = torch.relu(self.hidden2(x))
+        # x = torch.relu(self.hidden2(x))
         x = torch.relu(self.hidden3(x))
         x = self.output(x)
         return x
@@ -67,7 +68,7 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=50).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=100).view(-1, 1).requires_grad_(True)
 
     Sin = 1.43 * 200
 
@@ -86,19 +87,23 @@ def loss_ode(
     dSdt_pred = torch.autograd.grad(
         S_pred, t, grad_outputs=torch.ones_like(S_pred), create_graph=True
     )[0]
-    # dVdt_pred = torch.autograd.grad(
-    #     V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
-    # )[0]
+    dVdt_pred = torch.autograd.grad(
+        V_pred, t, grad_outputs=torch.ones_like(V_pred), create_graph=True
+    )[0]
 
     mu = net.mu_max * S_pred / (net.K_s + S_pred)
 
-    error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
+    error_dXdt = nn.MSELoss()(
+        dXdt_pred, mu * X_pred - X_pred * F / V_pred
+    )
     error_dSdt = nn.MSELoss()(
         dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
-    # error_dVdt = nn.MSELoss()(dVdt_pred, F)
+    error_dVdt = nn.MSELoss()(
+        dVdt_pred, torch.ones_like(dVdt_pred) * F
+    )
 
-    error_ode = error_dXdt + error_dSdt #+ error_dVdt
+    error_ode = error_dXdt + error_dSdt + error_dVdt
     return error_ode
 
 def train(
@@ -122,7 +127,8 @@ def train(
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
         V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
         loss_data = X_data_loss + S_data_loss + V_data_loss
-        
+        loss_data = loss_data 
+
         # Initial condition loss
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
         S_IC_loss = nn.MSELoss()(u_pred[0, 1], u_train[0, 1])
@@ -130,16 +136,22 @@ def train(
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
         # ODE loss
-        loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max())
+        loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max()) * 0.50
 
         total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
         optimizer.step()
 
-        if verbose and epoch % 100 == 0:
+        if verbose and epoch % 250 == 0:
             tqdm.write(f"Epoch {epoch} || Total Loss: {total_loss.item():.4f}, Loss Data: {loss_data.item():.4f}, Loss ODE: {loss_pde.item():.4f}, Loss IC: {loss_ic.item():.4f}")
             tqdm.write(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
+
+        if epoch == 0:
+            # Checking that the initialization of the ANN results in positive values for the state variables
+            if (u_pred < 0).any():
+                raise ValueError("u_pred has negative values")
             
+       
     return net

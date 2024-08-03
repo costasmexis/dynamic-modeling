@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 FILENAME = './data/data_processed.xlsx'
 EXPERIMENT = 'BR02'
-EPOCHS = 3000
+
+EPOCHS = 1000
 
 def plot_feed(feeds):
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -137,16 +138,16 @@ def plot_model_intelligence(sol_A: Union[solve_ivp, None] = None,
     # ax1.plot(sol_A.t, sol_A.y[1], label='Glucose (ODE) A', color='red', linestyle='--', alpha=0.6)
     # ax2.plot(sol_A.t, sol_A.y[3], label='Protein (ODE) A', color='red', alpha=0.6)
     # ax1.plot(net_df_A['RTime'], net_df_A['Glucose'], label='Glucose (Predicted) A', marker='x', color='red', alpha=0.5)
-    ax1.plot(net_df_A['RTime'], net_df_A['Biomass'], label='Biomass (Predicted) A', marker='^', color='red', alpha=0.5)
-    ax2.plot(net_df_A['RTime'], net_df_A['Protein'], label='Protein (Predicted) A', marker='s', color='red', alpha=0.5)
+    # ax1.plot(net_df_A['RTime'], net_df_A['Biomass'], label='Biomass (Predicted) A', marker='^', color='red', alpha=0.5)
+    # ax2.plot(net_df_A['RTime'], net_df_A['Protein'], label='Protein (Predicted) A', marker='s', color='red', alpha=0.5)
     
     # Plot for Model B
     # ax1.plot(sol_B.t, sol_B.y[0], label='Biomass (ODE) B', color='green', alpha=0.6)
     # ax1.plot(sol_B.t, sol_B.y[1], label='Glucose (ODE) B', color='green', linestyle='--', alpha=0.6)
     # ax2.plot(sol_B.t, sol_B.y[3], label='Protein (ODE) B', color='green', alpha=0.6)
     # ax1.plot(net_df_B['RTime'], net_df_B['Glucose'], label='Glucose (Predicted) B', marker='x', color='green', alpha=0.5)
-    ax1.plot(net_df_B['RTime'], net_df_B['Biomass'], label='Biomass (Predicted) B', marker='^', color='green', alpha=0.5)
-    ax2.plot(net_df_B['RTime'], net_df_B['Protein'], label='Protein (Predicted) B', marker='s', color='green', alpha=0.5)
+    # ax1.plot(net_df_B['RTime'], net_df_B['Biomass'], label='Biomass (Predicted) B', marker='^', color='green', alpha=0.5)
+    # ax2.plot(net_df_B['RTime'], net_df_B['Protein'], label='Protein (Predicted) B', marker='s', color='green', alpha=0.5)
     
     # Plot for Model C
     # ax1.plot(sol_C.t, sol_C.y[0], label='Biomass (ODE) C', color='blue', alpha=0.6)
@@ -203,10 +204,12 @@ def train_and_simulate(train_df: pd.DataFrame, full_df: pd.DataFrame, scf: int, 
 
 # Read data
 full_df, feeds = get_data_and_feed(FILENAME, EXPERIMENT)
-
-# Get FB and FBI data
 full_df = full_df[full_df['Process'] == 'FBI']
-feeds = feeds[feeds['Induction']==1]
+del full_df
+# Read simulated data
+full_df = pd.read_csv('./data/BR02_FBI_sim.csv')
+
+feeds = feeds[feeds['Induction'] == 1]
 
 print(f'Dataset shape: {full_df.shape}')
 
@@ -218,7 +221,7 @@ for i in range(len(full_df), 1, -1):
     while repeat:
         try:
             print('Model A')
-            net_A, net_df_A, sol_A = train_and_simulate(train_df, full_df, scf=1, epochs=EPOCHS, plot=False)
+            net_A, net_df_A, sol_A = train_and_simulate(train_df, full_df, scf=1, epochs=5, plot=False)
             repeat = False
         except ValueError:
             pass
@@ -227,7 +230,7 @@ for i in range(len(full_df), 1, -1):
     while repeat:
         try:
             print('Model B')
-            net_B, net_df_B, sol_B = train_and_simulate(train_df, full_df, scf=2, epochs=EPOCHS, plot=False)
+            net_B, net_df_B, sol_B = train_and_simulate(train_df, full_df, scf=2, epochs=5, plot=False)
             repeat = False
         except ValueError:
             pass

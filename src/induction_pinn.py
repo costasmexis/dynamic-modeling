@@ -29,16 +29,18 @@ class PINN(nn.Module):
         t_end: Union[np.float32, torch.Tensor],
     ):
         super(PINN, self).__init__()
-        self.input = nn.Linear(input_dim, 64)
-        self.hidden = nn.Linear(64, 256)
-        self.hidden2 = nn.Linear(256, 256)
-        self.hidden3 = nn.Linear(256, 16)
-        self.output = nn.Linear(16, output_dim)
+        self.input = nn.Linear(input_dim, 516)
+        self.hidden = nn.Linear(516, 516)
+        self.output = nn.Linear(516, output_dim)
 
         # Kinetic parameters
-        self.mu_max = nn.Parameter(torch.tensor([0.5]))
-        self.K_s = nn.Parameter(torch.tensor([0.5]))
-        self.Y_xs = nn.Parameter(torch.tensor([0.5]))
+        # self.mu_max = nn.Parameter(torch.tensor([0.5]))
+        # self.K_s = nn.Parameter(torch.tensor([0.5]))
+        # self.Y_xs = nn.Parameter(torch.tensor([0.5]))
+
+        self.mu_max = torch.tensor([0.88])
+        self.K_s = torch.tensor([0.214])
+        self.Y_xs = torch.tensor([0.50])
 
         # Protein modeling
         self.c1 = nn.Parameter(torch.tensor([0.1]))
@@ -56,9 +58,7 @@ class PINN(nn.Module):
     def forward(self, x):
         x = torch.relu(self.input(x))
         x = torch.relu(self.hidden(x))
-        x = torch.relu(self.hidden2(x))
-        x = torch.relu(self.hidden2(x))
-        x = torch.relu(self.hidden3(x))
+        x = torch.relu(self.hidden(x))
         x = self.output(x)
         return x
     
@@ -80,7 +80,7 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=50).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=500).view(-1, 1).requires_grad_(True)
 
     Sin = 1.43 * 200
 
@@ -92,7 +92,7 @@ def loss_ode(
     X_pred = u_pred[:, 0].view(-1, 1)
     S_pred = u_pred[:, 1].view(-1, 1)
     V_pred = u_pred[:, 2].view(-1, 1)
-    P_pred = u_pred[:, 3].view(-1, 1)
+    P_pred = u_pred[:, 3].view(-1, 1) * 1e-3 # Transform to g/L
 
     dXdt_pred = torch.autograd.grad(
         X_pred, t, grad_outputs=torch.ones_like(X_pred), create_graph=True
@@ -116,12 +116,18 @@ def loss_ode(
     elif scf == 3:
         alpha = net.c1 * (1 - torch.exp(-net.c2*t**2)) + net.c3 * (1 - torch.exp(-net.c4*t**2))
 
-    error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred + X_pred * F / V_pred)
+    error_dXdt = nn.MSELoss()(
+        dXdt_pred, mu * X_pred - X_pred * F / V_pred
+    )
     error_dSdt = nn.MSELoss()(
         dSdt_pred, - mu * X_pred / net.Y_xs + F / V_pred * (Sin - S_pred)
     )
-    error_dVdt = nn.MSELoss()(dVdt_pred, F)
-    error_dPdt = nn.MSELoss()(dPdt_pred, alpha *mu * X_pred - P_pred * F / V_pred)
+    error_dVdt = nn.MSELoss()(
+        dVdt_pred, F
+    )
+    error_dPdt = nn.MSELoss()(
+        dPdt_pred, alpha * mu * X_pred - P_pred * F / V_pred
+    )
 
     error_ode = error_dXdt + error_dSdt + error_dVdt + error_dPdt
     return error_ode
@@ -137,7 +143,7 @@ def train(
     verbose: int = 0,
 ) -> nn.Module:
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=5e-5)
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
 
     for epoch in tqdm(range(num_epochs)):
         optimizer.zero_grad()
@@ -157,12 +163,12 @@ def train(
         V_IC_loss = nn.MSELoss()(u_pred[0, 2], u_train[0, 2])
         P_IC_loss = nn.MSELoss()(u_pred[0, 3], u_train[0, 3])   
 
-        loss_ic = X_IC_loss + S_IC_loss + V_IC_loss #+ P_IC_loss
+        loss_ic = X_IC_loss + S_IC_loss + V_IC_loss + P_IC_loss
         
         # ODE loss
         loss_pde = loss_ode(net, scf, feeds, df["RTime"].min(), df["RTime"].max())
 
-        total_loss = loss_data + loss_pde + 3 * loss_ic
+        total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
         optimizer.step()
         
