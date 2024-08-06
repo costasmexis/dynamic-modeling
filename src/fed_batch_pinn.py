@@ -32,7 +32,7 @@ class PINN(nn.Module):
         self.input = nn.Linear(input_dim, 64)
         self.hidden = nn.Linear(64, 256)
         self.hidden2 = nn.Linear(256, 256)
-        self.hidden3 = nn.Linear(256, 64)
+        self.hidden3 = nn.Linear(256, 64) 
         self.output = nn.Linear(64, output_dim)
 
         self.mu_max = nn.Parameter(torch.tensor([0.5]))
@@ -49,8 +49,8 @@ class PINN(nn.Module):
     def forward(self, x):
         x = torch.relu(self.input(x))
         x = torch.relu(self.hidden(x))
-        x = torch.relu(self.hidden2(x))
-        # x = torch.relu(self.hidden2(x))
+        x = torch.tanh(self.hidden2(x))
+        x = torch.tanh(self.hidden2(x))
         x = torch.relu(self.hidden3(x))
         x = self.output(x)
         return x
@@ -118,7 +118,7 @@ def train(
     
     optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
 
-    for epoch in tqdm(range(num_epochs)):
+    for epoch in range(num_epochs):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
         
@@ -127,7 +127,7 @@ def train(
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
         V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
         loss_data = X_data_loss + S_data_loss + V_data_loss
-        loss_data = loss_data 
+        loss_data = loss_data * 0.5
 
         # Initial condition loss
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
@@ -136,7 +136,7 @@ def train(
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
         # ODE loss
-        loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max()) * 0.50
+        loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max()) 
 
         total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
@@ -148,10 +148,17 @@ def train(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
 
-        if epoch == 0:
-            # Checking that the initialization of the ANN results in positive values for the state variables
-            if (u_pred < 0).any():
-                raise ValueError("u_pred has negative values")
-            
-       
+        # if epoch == 0:
+        #     # Checking that the initialization of the ANN results in positive values for the state variables
+        #     if (u_pred < 0).any():
+        #         raise ValueError("u_pred has negative values")
+        
+        # Early stopping if total_loss <= 0.001 for 100 consecutive epochs
+        if total_loss <= 0.005 and loss_data <= 0.005 and loss_pde <= 0.005 and epoch >= 5000:
+            print(f"Early stopping at epoch {epoch}")
+            print(f'mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}')
+            break
+        
+
+
     return net

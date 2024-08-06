@@ -9,56 +9,16 @@ from scipy.integrate import solve_ivp
 
 import torch
 import torch.nn as nn
-from tqdm import tqdm 
 
-def get_feed(feeds: pd.DataFrame, time: float) -> float:
-    for _, row in feeds.iterrows():
-        start_time = row["Time"]
-        end_time = row["Time"] + row["Duration"]
-        if start_time <= time < end_time:
-            return row["F"] / 1000
-    return 0
-
-def simulate(df: pd.DataFrame, feeds: pd.DataFrame, mu_max, Ks, Yxs):
-    mu_max = mu_max
-    Ks = Ks
-    Yxs = Yxs
-    Sin = 1.43 * 200
-
-    def system_ode(t, y):
-        X, S, V = y
-        mu = mu_max * S / (Ks + S)
-        F = get_feed(feeds, t)
-        dXdt = mu * X - F * X / V
-        dSdt = - mu * X / Yxs + F * (Sin - S) / V
-        dVdt = F
-        return [dXdt, dSdt, dVdt]
+def plot_feed(feeds):
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(feeds['Time'], feeds['F'], width=feeds['Duration'], align='edge')
+    ax.set_xlabel('Time (h)')
+    ax.set_ylabel('Feed (mL/h)')
+    ax.set_title('Feed vs Time')
+    plt.show()
     
-    t_start, t_end = df['RTime'].min(), df['RTime'].max()
-    t_span = (t_start, t_end)
-    y0 = [df['Biomass'].iloc[0], df['Glucose'].iloc[0], df['V'].iloc[0]]
-
-    t_eval = np.linspace(t_start, t_end, 10000)
-    sol = solve_ivp(system_ode, t_span=t_span, \
-        y0=y0, t_eval=t_eval)
-    
-    for i in range(sol.y.shape[0]):
-        sol.y[i][sol.y[i] < 0] = 0
-
-    return sol
-
-def get_predictions_df(net: nn.Module, df: pd.DataFrame):
-    net_df = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose'])
-    t_test = df['RTime'].values
-    t_test = numpy_to_tensor(t_test)
-    net_df["RTime"] = df["RTime"].values
-    net_df["Biomass"] = net.forward(t_test).detach().cpu().numpy()[:, 0]
-    net_df["Glucose"] = net.forward(t_test).detach().cpu().numpy()[:, 1]
-    net_df["V"] = net.forward(t_test).detach().cpu().numpy()[:, 2]
-    net_df.loc[net_df['Glucose'] < 0, 'Glucose'] = 0
-    return net_df
-
-def plot_simulation(t=None, y=None, feeds: Optional[pd.DataFrame] = None, full_df: Optional[pd.DataFrame] = None, train_df: Optional[pd.DataFrame] = None, net_df: Optional[pd.DataFrame] = None, title: Optional[str] = None):
+def plot_simulation(t=None, y=None, feeds: Optional[pd.DataFrame] = None, full_df: Optional[pd.DataFrame] = None, train_df: Optional[pd.DataFrame] = None, net_df: Optional[pd.DataFrame] = None, title: Optional[str] = None, save: Optional[bool] = False):
     fig, ax1 = plt.subplots(figsize=(10, 5))
     if t is not None and y is not None:
         ax1.plot(t, y[0], label='Biomass (ODE)', alpha=0.6)
@@ -69,12 +29,18 @@ def plot_simulation(t=None, y=None, feeds: Optional[pd.DataFrame] = None, full_d
         ax1.scatter(full_df['RTime'], full_df['Biomass'], label='Biomass (EXP)', color='green', alpha=0.2)
     
     if train_df is not None:
-        ax1.scatter(train_df['RTime'], train_df['Glucose'], label='Glucose (Train)', color='red', alpha=1)   
-        ax1.scatter(train_df['RTime'], train_df['Biomass'], label='Biomass (Train)', color='green', alpha=1)
+        ax1.scatter(train_df['RTime'], train_df['Glucose'], label='_Glucose (Train)', color='red', alpha=1)   
+        ax1.scatter(train_df['RTime'], train_df['Biomass'], label='_Biomass (Train)', color='green', alpha=1)
     
     if net_df is not None:
-        ax1.scatter(net_df['RTime'], net_df['Glucose'], label='Glucose (Predicted)', marker='x', color='red', alpha=0.5)
-        ax1.scatter(net_df['RTime'], net_df['Biomass'], label='Biomass (Predicted)', marker='x', color='green', alpha=0.5)
+
+        # Check if len(net_df) == len(full_df); If yes->scatter, else->plot
+        if len(net_df) == len(full_df):
+            ax1.scatter(net_df['RTime'], net_df['Glucose'], label='Glucose (PINN)', marker='x', color='red', alpha=0.5)
+            ax1.scatter(net_df['RTime'], net_df['Biomass'], label='Biomass (PINN)', marker='x', color='green', alpha=0.5)
+        else:
+            ax1.plot(net_df['RTime'], net_df['Glucose'], label='Glucose (PINN)', color='red', alpha=0.5)
+            ax1.plot(net_df['RTime'], net_df['Biomass'], label='Biomass (PINN)', color='green', alpha=0.5)
 
     plt.xlabel("Time (hours)")
     plt.ylabel("Concentration")
@@ -97,12 +63,109 @@ def plot_simulation(t=None, y=None, feeds: Optional[pd.DataFrame] = None, full_d
     else:
         ax1.legend(handles1, labels1, loc='upper left')
 
-    title = len(train_df)
-    plt.savefig(f'./plots/fed_batch_{title}.png')
+    if save:
+        plt.savefig(f'./plots/new_fed_batch_{len(train_df)}.png')
+    plt.show()
+ 
+def get_feed(feeds: pd.DataFrame, time: float) -> float:
+    for _, row in feeds.iterrows():
+        start_time = row["Time"]
+        end_time = row["Time"] + row["Duration"]
+        if start_time <= time < end_time:
+            return row["F"] / 1000
+    return 0
 
-def main(df: pd.DataFrame, i: int):
+def simulate(df: pd.DataFrame, feeds: pd.DataFrame, mu_max, Ks, Yxs, plot: bool = True):
+    mu_max = mu_max
+    Ks = Ks
+    Yxs = Yxs
+    Sin = 1.43 * 200
+
+    def system_ode(t, y):
+        X, S, V = y
+        mu = mu_max * S / (Ks + S)
+        F = get_feed(feeds, t)
+        dXdt = mu * X - F * X / V
+        dSdt = - mu * X / Yxs + F * (Sin - S) / V
+        dVdt = F
+        return [dXdt, dSdt, dVdt]
+    
+    t_start, t_end = df['RTime'].min(), df['RTime'].max()
+    t_span = (t_start, t_end)
+    y0 = [df['Biomass'].iloc[0], df['Glucose'].iloc[0], df['V'].iloc[0]]
+
+    t_eval = np.linspace(t_start, t_end, 10000)
+    sol = solve_ivp(system_ode, t_span=t_span, \
+        y0=y0, t_eval=t_eval)
+    
+    # Transform negative values to 0
+    for i in range(sol.y.shape[0]):
+        sol.y[i][sol.y[i] < 0] = 0
+
+    if plot:
+        plot_simulation(sol.t, sol.y, feeds=feeds, full_df=df)
+
+    return sol
+
+def get_predictions_df(net: nn.Module, df: pd.DataFrame, method: str = 'validation'):
+    net_df = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose'])
+    # If method == 'validation', we use the real time values
+    if method == 'validation':
+        t_test = df['RTime'].values
+        net_df['RTime'] = t_test
+    elif method == 'full':
+        t_test = np.linspace(df['RTime'].min(), df['RTime'].max(), 1000)
+        net_df["RTime"] = t_test
+
+    t_test = numpy_to_tensor(t_test)
+    net_df["Biomass"] = net.forward(t_test).detach().cpu().numpy()[:, 0]
+    net_df["Glucose"] = net.forward(t_test).detach().cpu().numpy()[:, 1]
+    net_df["V"] = net.forward(t_test).detach().cpu().numpy()[:, 2]
+    net_df.loc[net_df['Glucose'] < 0, 'Glucose'] = 0
+    return net_df
+
+##############################################
+FILENAME = './data/data_processed.xlsx'
+EXPERIMENT = 'BR01'
+
+_df, feeds = get_data_and_feed(FILENAME, EXPERIMENT)
+
+# Only FED-BATCH data
+_df = _df[_df['Process'] == 'FB']
+feeds = feeds[feeds['Induction']==0]
+
+print(f'Dataset shape: {_df.shape}')
+
+# Fit polynomial to data
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+
+STEP = 20
+
+poly = PolynomialFeatures(degree=4)
+t_train = poly.fit_transform(_df['RTime'].values.reshape(-1, 1))
+y_train = _df[['Biomass', 'Glucose', 'V']].values
+reg = LinearRegression().fit(t_train, y_train)
+
+t_sim = poly.fit_transform(np.linspace(_df['RTime'].min(), _df['RTime'].max(), STEP).reshape(-1, 1))
+y_sim = reg.predict(t_sim)
+
+df_sim = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose', 'V'])
+df_sim['RTime'] = np.linspace(_df['RTime'].min(), _df['RTime'].max(), STEP) 
+df_sim['Biomass'] = y_sim[:, 0]
+df_sim['Glucose'] = y_sim[:, 1]
+df_sim['V'] = y_sim[:, 2]
+df_sim.loc[df_sim['Glucose'] < 0, 'Glucose'] = 0
+_df = pd.concat([_df, df_sim], axis=0)
+_df = _df.sort_values(by='RTime', ascending=True).reset_index(drop=True)
+_df['RTimeDiff'] = _df['RTime'].diff()
+_df = _df[_df['RTimeDiff'] > 0.2]
+_df.drop(columns=['RTimeDiff', 'Process', 'Protein', 'Temperature', 'Induction'], inplace=True)
+
+def main(df: pd.DataFrame, i: int, num_epochs: int = 1000):
     print(f'Training with {i} data points')
     df = _df.iloc[:i]
+    print(f'Training shape: {df.shape}')
     t_start, t_end = df['RTime'].min(), df['RTime'].max()
 
     t_train = numpy_to_tensor(df['RTime'].values)
@@ -116,29 +179,18 @@ def main(df: pd.DataFrame, i: int):
     repeat = True
     while repeat:
         try:
-            net = train(net, t_train, u_train, df, feeds, num_epochs=2500, verbose=True)
+            net = train(net, t_train, u_train, df, feeds, num_epochs=num_epochs, verbose=True)
             repeat = False
         except ValueError:
             print('ValueError caught. Retrying...')
 
-    net_df = get_predictions_df(net, _df)    
-    sol = simulate(_df, feeds, net.mu_max.item(), net.K_s.item(), net.Y_xs.item())
+    net_df = get_predictions_df(net, _df, method='full')    
+
+    sol = simulate(_df, feeds, net.mu_max.item(), net.K_s.item(), net.Y_xs.item(), plot=False)
 
     title = f"mu_max: {net.mu_max.item():4f}, Ks: {net.K_s.item():4f}, Yxs: {net.Y_xs.item():.4f}"
-    plot_simulation(sol.t, sol.y, net_df=net_df, train_df=df, full_df=_df, title=title) 
+    plot_simulation(sol.t, sol.y, net_df=net_df, train_df=df, full_df=_df, title=title, save=True) 
     return net, net_df
 
-
-FILENAME = './data/data_processed.xlsx'
-EXPERIMENT = 'BR01'
-
-_df, feeds = get_data_and_feed(FILENAME, EXPERIMENT)
-
-# Only FED-BATCH data
-_df = _df[_df['Process'] == 'FB']
-feeds = feeds[feeds['Induction']==0]
-
-# for i in range(len(_df), 1, -1):
-for i in range(5, 1, -1):
-    print(f'Running with {i} data points')
-    net, net_df = main(_df, i)
+for i in range(16, len(_df)+1, 2):
+    net, net_df = main(_df, i, num_epochs=5000)
