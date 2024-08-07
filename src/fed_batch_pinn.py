@@ -110,13 +110,14 @@ def train(
     net: nn.Module,
     t_train: torch.Tensor,
     u_train: torch.Tensor,
-    df: pd.DataFrame,
+    full_df: pd.DataFrame,
     feeds: pd.DataFrame,
     num_epochs: int = 1000,
+    lr: float = 5e-4,
     verbose: bool = True,
 ) -> nn.Module:
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
 
     for epoch in range(num_epochs):
         optimizer.zero_grad()
@@ -127,7 +128,7 @@ def train(
         S_data_loss = nn.MSELoss()(u_pred[:, 1], u_train[:, 1])
         V_data_loss = nn.MSELoss()(u_pred[:, 2], u_train[:, 2])
         loss_data = X_data_loss + S_data_loss + V_data_loss
-        loss_data = loss_data * 0.5
+        loss_data = loss_data 
 
         # Initial condition loss
         X_IC_loss = nn.MSELoss()(u_pred[0, 0], u_train[0, 0])
@@ -136,7 +137,7 @@ def train(
         loss_ic = X_IC_loss + S_IC_loss + V_IC_loss
         
         # ODE loss
-        loss_pde = loss_ode(net, feeds, df["RTime"].min(), df["RTime"].max()) 
+        loss_pde = loss_ode(net, feeds, full_df["RTime"].min(), full_df["RTime"].max()) 
 
         total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
@@ -154,7 +155,7 @@ def train(
         #         raise ValueError("u_pred has negative values")
         
         # Early stopping if total_loss <= 0.001 for 100 consecutive epochs
-        if total_loss <= 0.005 and loss_data <= 0.005 and loss_pde <= 0.005 and epoch >= 5000:
+        if total_loss <= 0.003 and loss_data <= 0.005 and loss_pde <= 0.005 and epoch >= 5000:
             print(f"Early stopping at epoch {epoch}")
             print(f'mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}')
             break

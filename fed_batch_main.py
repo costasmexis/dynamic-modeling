@@ -162,16 +162,16 @@ _df['RTimeDiff'] = _df['RTime'].diff()
 _df = _df[_df['RTimeDiff'] > 0.2]
 _df.drop(columns=['RTimeDiff', 'Process', 'Protein', 'Temperature', 'Induction'], inplace=True)
 
-def main(df: pd.DataFrame, i: int, num_epochs: int = 1000):
+def main(full_df: pd.DataFrame, i: int, num_epochs: int = 1000):
     print(f'Training with {i} data points')
-    df = _df.iloc[:i]
-    print(f'Training shape: {df.shape}')
-    t_start, t_end = df['RTime'].min(), df['RTime'].max()
+    train_df = full_df.iloc[:i]
+    print(f'Training shape: {train_df.shape}')
+    t_start, t_end = train_df['RTime'].min(), train_df['RTime'].max()
 
-    t_train = numpy_to_tensor(df['RTime'].values)
-    Biomass_train = numpy_to_tensor(df['Biomass'].values)
-    Glucose_train = numpy_to_tensor(df['Glucose'].values)
-    V_train = numpy_to_tensor(df['V'].values)
+    t_train = numpy_to_tensor(train_df['RTime'].values)
+    Biomass_train = numpy_to_tensor(train_df['Biomass'].values)
+    Glucose_train = numpy_to_tensor(train_df['Glucose'].values)
+    V_train = numpy_to_tensor(train_df['V'].values)
     u_train = torch.cat((Biomass_train, Glucose_train, V_train), 1)
 
     net = PINN(input_dim=1, output_dim=3, t_start=t_start, t_end=t_end)
@@ -179,18 +179,18 @@ def main(df: pd.DataFrame, i: int, num_epochs: int = 1000):
     repeat = True
     while repeat:
         try:
-            net = train(net, t_train, u_train, df, feeds, num_epochs=num_epochs, verbose=True)
+            net = train(net, t_train, u_train, full_df, feeds, num_epochs=num_epochs, verbose=True, lr=0.0001)
             repeat = False
         except ValueError:
             print('ValueError caught. Retrying...')
 
-    net_df = get_predictions_df(net, _df, method='full')    
+    net_df = get_predictions_df(net, full_df, method='full')    
 
-    sol = simulate(_df, feeds, net.mu_max.item(), net.K_s.item(), net.Y_xs.item(), plot=False)
+    sol = simulate(full_df, feeds, net.mu_max.item(), net.K_s.item(), net.Y_xs.item(), plot=False)
 
     title = f"mu_max: {net.mu_max.item():4f}, Ks: {net.K_s.item():4f}, Yxs: {net.Y_xs.item():.4f}"
-    plot_simulation(sol.t, sol.y, net_df=net_df, train_df=df, full_df=_df, title=title, save=True) 
+    plot_simulation(sol.t, sol.y, net_df=net_df, train_df=train_df, full_df=full_df, title=title, save=True) 
     return net, net_df
 
-for i in range(16, len(_df)+1, 2):
-    net, net_df = main(_df, i, num_epochs=5000)
+for i in range(12, len(_df)+1, 2):
+    net, net_df = main(full_df=_df, i=i, num_epochs=5000)
