@@ -6,9 +6,22 @@ from src.fed_batch_pinn import PINN, numpy_to_tensor, train
 from src.utils import get_data_and_feed
 from typing import Optional, Union
 from scipy.integrate import solve_ivp
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
 
 import torch
 import torch.nn as nn
+from tqdm import tqdm 
+
+pd.options.mode.chained_assignment = None
+np.set_printoptions(precision=4)
+
+STEP = 20
+FILENAME = './data/data_processed.xlsx'
+EXPERIMENT = 'BR01'
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f'Using {DEVICE}')
 
 def plot_feed(feeds):
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -52,7 +65,6 @@ def plot_simulation(t=None, y=None, feeds: Optional[pd.DataFrame] = None, full_d
             align='edge', label='Feed', alpha=0.5, color=None, \
             edgecolor='black', linewidth=1, fill=False)
         ax2.set_ylabel('Feed Rate')
-
     
     handles1, labels1 = ax1.get_legend_handles_labels()
     if feeds is not None:
@@ -124,48 +136,43 @@ def get_predictions_df(net: nn.Module, df: pd.DataFrame, method: str = 'validati
     net_df.loc[net_df['Glucose'] < 0, 'Glucose'] = 0
     return net_df
 
-##############################################
-FILENAME = './data/data_processed.xlsx'
-EXPERIMENT = 'BR01'
+def fit_polynomial(full_df: pd.DataFrame, degree: int = 4, step: int = STEP, plot: bool =True):
+    poly = PolynomialFeatures(degree=4)
+    t_train = poly.fit_transform(full_df['RTime'].values.reshape(-1, 1))
+    y_train = full_df[['Biomass', 'Glucose', 'V']].values
+    reg = LinearRegression().fit(t_train, y_train)
 
-_df, feeds = get_data_and_feed(FILENAME, EXPERIMENT)
+    t_sim = poly.fit_transform(np.linspace(full_df['RTime'].min(), full_df['RTime'].max(), STEP).reshape(-1, 1))
+    y_sim = reg.predict(t_sim)
 
-# Only FED-BATCH data
-_df = _df[_df['Process'] == 'FB']
-feeds = feeds[feeds['Induction']==0]
+    df_sim = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose', 'V'])
+    df_sim['RTime'] = np.linspace(full_df['RTime'].min(), full_df['RTime'].max(), STEP) 
+    df_sim['Biomass'] = y_sim[:, 0]
+    df_sim['Glucose'] = y_sim[:, 1]
+    df_sim['V'] = y_sim[:, 2]
+    df_sim.loc[df_sim['Glucose'] < 0, 'Glucose'] = 0
+    full_df = pd.concat([full_df, df_sim], axis=0)
+    full_df = full_df.sort_values(by='RTime', ascending=True).reset_index(drop=True)
+    full_df['RTimeDiff'] = full_df['RTime'].diff()
+    full_df = full_df[full_df['RTimeDiff'] > 0.2]
+    full_df.drop(columns=['RTimeDiff', 'Process', 'Protein', 'Temperature', 'Induction'], inplace=True)
 
-print(f'Dataset shape: {_df.shape}')
+    if plot:
+        plt.figure(figsize=(10, 3))
+        plt.scatter(full_df['RTime'], full_df['Biomass'], label='Biomass (EXP)')
+        plt.scatter(full_df['RTime'], full_df['Glucose'], label='Glucose (EXP)')
+        plt.legend()
+        plt.xlabel('Time (h)')
+        plt.ylabel('Concentration')
+        plt.title('Simulated Data & Experimental Data')
+        plt.show()
+        
+    return full_df
 
-# Fit polynomial to data
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-
-STEP = 20
-
-poly = PolynomialFeatures(degree=4)
-t_train = poly.fit_transform(_df['RTime'].values.reshape(-1, 1))
-y_train = _df[['Biomass', 'Glucose', 'V']].values
-reg = LinearRegression().fit(t_train, y_train)
-
-t_sim = poly.fit_transform(np.linspace(_df['RTime'].min(), _df['RTime'].max(), STEP).reshape(-1, 1))
-y_sim = reg.predict(t_sim)
-
-df_sim = pd.DataFrame(columns=['RTime', 'Biomass', 'Glucose', 'V'])
-df_sim['RTime'] = np.linspace(_df['RTime'].min(), _df['RTime'].max(), STEP) 
-df_sim['Biomass'] = y_sim[:, 0]
-df_sim['Glucose'] = y_sim[:, 1]
-df_sim['V'] = y_sim[:, 2]
-df_sim.loc[df_sim['Glucose'] < 0, 'Glucose'] = 0
-_df = pd.concat([_df, df_sim], axis=0)
-_df = _df.sort_values(by='RTime', ascending=True).reset_index(drop=True)
-_df['RTimeDiff'] = _df['RTime'].diff()
-_df = _df[_df['RTimeDiff'] > 0.2]
-_df.drop(columns=['RTimeDiff', 'Process', 'Protein', 'Temperature', 'Induction'], inplace=True)
-
-def main(full_df: pd.DataFrame, i: int, num_epochs: int = 1000):
+def get_model_and_results(full_df: pd.DataFrame, feeds: pd.DataFrame, i: int, num_epochs: int = 1000):
+    
     print(f'Training with {i} data points')
     train_df = full_df.iloc[:i]
-    print(f'Training shape: {train_df.shape}')
     t_start, t_end = train_df['RTime'].min(), train_df['RTime'].max()
 
     t_train = numpy_to_tensor(train_df['RTime'].values)
@@ -174,12 +181,13 @@ def main(full_df: pd.DataFrame, i: int, num_epochs: int = 1000):
     V_train = numpy_to_tensor(train_df['V'].values)
     u_train = torch.cat((Biomass_train, Glucose_train, V_train), 1)
 
-    net = PINN(input_dim=1, output_dim=3, t_start=t_start, t_end=t_end)
+    net = PINN(input_dim=1, output_dim=3, t_start=t_start, t_end=t_end).to(DEVICE)
 
     repeat = True
     while repeat:
         try:
-            net = train(net, t_train, u_train, full_df, feeds, num_epochs=num_epochs, verbose=True, lr=0.0001)
+            net = train(net, t_train, u_train, full_df, feeds, \
+                num_epochs=num_epochs, verbose=True)
             repeat = False
         except ValueError:
             print('ValueError caught. Retrying...')
@@ -192,5 +200,24 @@ def main(full_df: pd.DataFrame, i: int, num_epochs: int = 1000):
     plot_simulation(sol.t, sol.y, net_df=net_df, train_df=train_df, full_df=full_df, title=title, save=True) 
     return net, net_df
 
-for i in range(12, len(_df)+1, 2):
-    net, net_df = main(full_df=_df, i=i, num_epochs=5000)
+def get_fed_batch_data(filename: str, experiment: str):
+    # Only FED-BATCH data
+    full_df, feeds = get_data_and_feed(filename, experiment)
+    full_df = full_df[full_df['Process'] == 'FB']
+    feeds = feeds[feeds['Induction']==0]
+
+    print(f'Dataset shape: {full_df.shape}')
+
+    return full_df, feeds
+
+def main(epochs: int):
+    full_df, feeds = get_fed_batch_data(FILENAME, EXPERIMENT)
+    full_df = fit_polynomial(full_df, degree=4, step=STEP, plot=False)
+    
+    for ii in range(len(full_df), 2, -2):
+        print(f'Running with {ii} data points')
+        net, net_df = get_model_and_results(full_df=full_df, feeds=feeds,
+                                            i=ii, num_epochs=epochs)
+    
+if __name__ == '__main__':
+    main(epochs=5000)

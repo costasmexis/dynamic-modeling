@@ -19,7 +19,6 @@ def numpy_to_tensor(array):
         .reshape(-1, 1)
     )
 
-
 class PINN(nn.Module):
     def __init__(
         self,
@@ -68,13 +67,13 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=100).view(-1, 1).requires_grad_(True)
+    t = torch.linspace(t_start, t_end, steps=100).view(-1, 1).requires_grad_(True).to(DEVICE)
 
     Sin = 1.43 * 200
 
     F = torch.tensor([feeding_strategy(feeds, t) for t in t], dtype=torch.float32).view(
         -1, 1
-    )
+    ).to(DEVICE)
 
     u_pred = net.forward(t)
     X_pred = u_pred[:, 0].view(-1, 1)
@@ -118,7 +117,8 @@ def train(
 ) -> nn.Module:
     
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
-
+    
+    early_stopping = 0
     for epoch in range(num_epochs):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
@@ -149,17 +149,13 @@ def train(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
 
-        # if epoch == 0:
-        #     # Checking that the initialization of the ANN results in positive values for the state variables
-        #     if (u_pred < 0).any():
-        #         raise ValueError("u_pred has negative values")
-        
-        # Early stopping if total_loss <= 0.001 for 100 consecutive epochs
-        if total_loss <= 0.003 and loss_data <= 0.005 and loss_pde <= 0.005 and epoch >= 5000:
-            print(f"Early stopping at epoch {epoch}")
-            print(f'mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}')
-            break
-        
+        if total_loss < 1.0:
+            early_stopping += 1
+            if early_stopping >= 100:
+                tqdm.write("Early stopping")
+                break
+        else:
+            early_stopping = 0
 
-
+        
     return net
