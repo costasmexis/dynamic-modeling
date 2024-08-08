@@ -263,7 +263,7 @@ def get_model_and_results(
     repeat = True
     while repeat:
         try:
-            net = train(
+            net, loss = train(
                 net,
                 t_train,
                 u_train,
@@ -283,7 +283,7 @@ def get_model_and_results(
         full_df, feeds, net.mu_max.item(), net.K_s.item(), net.Y_xs.item(), plot=False
     )
 
-    title = f"mu_max: {net.mu_max.item():4f}, Ks: {net.K_s.item():4f}, Yxs: {net.Y_xs.item():.4f}"
+    title = f"mu_max: {net.mu_max.item():4f}, Ks: {net.K_s.item():4f}, Yxs: {net.Y_xs.item():.4f}, Loss: {loss:.4f}"    
     plot_simulation(
         sol.t,
         sol.y,
@@ -310,16 +310,16 @@ def get_fed_batch_data(filename: str, experiment: str):
 def main(epochs: int):
     
     FILENAME = "./data/data_processed.xlsx"
-    EXPERIMENT = "BR07"
+    EXPERIMENT = "BR01"
     
     full_df, feeds = get_fed_batch_data(FILENAME, EXPERIMENT)
     full_df = fit_polynomial(full_df, degree=3, step=STEP, plot=False)
 
-    for ii in range(len(full_df), 2, -2):
+    for ii in range(6, 10, 1):
         print(f"Running with {ii} data points")
         net, net_df = get_model_and_results(
-            full_df=full_df, feeds=feeds, i=ii, num_epochs=epochs, lr=0.001
+            full_df=full_df, feeds=feeds, i=ii, num_epochs=epochs, lr=0.0005
         )
 
 if __name__ == "__main__":
-    main(epochs=20000)
+    main(epochs=60000)

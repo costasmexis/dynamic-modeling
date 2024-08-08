@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -11,7 +11,6 @@ from .utils import feeding_strategy
 
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def numpy_to_tensor(array):
     return (
@@ -29,11 +28,11 @@ class PINN(nn.Module):
         t_end: Union[np.float32, torch.Tensor],
     ):
         super().__init__()
-        self.input = nn.Linear(input_dim, 64)
-        self.hidden = nn.Linear(64, 256)
+        self.input = nn.Linear(input_dim, 32)
+        self.hidden = nn.Linear(32, 256)
         self.hidden2 = nn.Linear(256, 256)
-        self.hidden3 = nn.Linear(256, 64) 
-        self.output = nn.Linear(64, output_dim)
+        self.hidden3 = nn.Linear(256, 256) 
+        self.output = nn.Linear(256, output_dim)
 
         self.mu_max = nn.Parameter(torch.tensor([0.65]))
         self.K_s = nn.Parameter(torch.tensor([0.5]))
@@ -49,8 +48,8 @@ class PINN(nn.Module):
     def forward(self, x):
         x = torch.relu(self.input(x))
         x = torch.relu(self.hidden(x))
-        x = torch.tanh(self.hidden2(x))
-        x = torch.tanh(self.hidden2(x))
+        x = torch.relu(self.hidden2(x))
+        x = torch.relu(self.hidden2(x))
         x = torch.relu(self.hidden3(x))
         x = self.output(x)
         return x
@@ -68,7 +67,7 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=400).view(-1, 1).requires_grad_(True).to(DEVICE)
+    t = torch.linspace(t_start, t_end, steps=100).view(-1, 1).requires_grad_(True).to(DEVICE)
 
     Sin = 1.43 * 200
 
@@ -115,14 +114,14 @@ def train(
     num_epochs: int = 1000,
     lr: float = 5e-4,
     verbose: bool = True,
-) -> nn.Module:
+) -> Tuple[nn.Module, float]:
     
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
 
     # Initialize variables for early stopping
     best_loss = float('inf')
     best_model_weights = None
-    patience = 100
+    patience = 500
         
     for epoch in range(num_epochs):
         optimizer.zero_grad()
@@ -155,14 +154,15 @@ def train(
             )
 
         # Early stopping
-        if total_loss < best_loss:
-            best_loss = total_loss
-            best_model_weights = copy.deepcopy(net.state_dict())
-            patience = 100
-        else:
-            patience -= 1
-            if patience == 0:
-                net.load_state_dict(best_model_weights)
-                break
+        if epoch >= 5000 and total_loss <= 1.0:
+            if total_loss < best_loss:
+                best_loss = total_loss
+                best_model_weights = copy.deepcopy(net.state_dict())
+                patience = 500
+            else:
+                patience -= 1
+                if patience == 0:
+                    net.load_state_dict(best_model_weights)
+                    break
         
-    return net
+    return net, total_loss.item()
