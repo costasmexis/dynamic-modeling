@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import copy 
 
 from .utils import feeding_strategy
 
@@ -34,7 +35,7 @@ class PINN(nn.Module):
         self.hidden3 = nn.Linear(256, 64) 
         self.output = nn.Linear(64, output_dim)
 
-        self.mu_max = nn.Parameter(torch.tensor([0.5]))
+        self.mu_max = nn.Parameter(torch.tensor([0.65]))
         self.K_s = nn.Parameter(torch.tensor([0.5]))
         self.Y_xs = nn.Parameter(torch.tensor([0.5]))
 
@@ -67,7 +68,7 @@ def loss_ode(
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = torch.linspace(t_start, t_end, steps=100).view(-1, 1).requires_grad_(True).to(DEVICE)
+    t = torch.linspace(t_start, t_end, steps=400).view(-1, 1).requires_grad_(True).to(DEVICE)
 
     Sin = 1.43 * 200
 
@@ -117,8 +118,12 @@ def train(
 ) -> nn.Module:
     
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
-    
-    early_stopping = 0
+
+    # Initialize variables for early stopping
+    best_loss = float('inf')
+    best_model_weights = None
+    patience = 100
+        
     for epoch in range(num_epochs):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
@@ -138,7 +143,7 @@ def train(
         
         # ODE loss
         loss_pde = loss_ode(net, feeds, full_df["RTime"].min(), full_df["RTime"].max()) 
-
+ 
         total_loss = loss_data + loss_pde + loss_ic
         total_loss.backward()
         optimizer.step()
@@ -149,13 +154,15 @@ def train(
             f"mu_max: {net.mu_max.item():.4f}, Ks: {net.K_s.item():.4f}, Yxs: {net.Y_xs.item():.4f}"
             )
 
-        if total_loss < 1.0:
-            early_stopping += 1
-            if early_stopping >= 100:
-                tqdm.write("Early stopping")
-                break
+        # Early stopping
+        if total_loss < best_loss:
+            best_loss = total_loss
+            best_model_weights = copy.deepcopy(net.state_dict())
+            patience = 100
         else:
-            early_stopping = 0
-
+            patience -= 1
+            if patience == 0:
+                net.load_state_dict(best_model_weights)
+                break
         
     return net
