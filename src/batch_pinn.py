@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import copy
 
 torch.manual_seed(42)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -89,7 +90,12 @@ def loss_ode(net: torch.nn.Module, t_start, t_end):
 
 
 def train(net, t, X_S, df, num_epochs=1000, verbose=True):
-    optimizer = torch.optim.Adam(net.parameters(), lr=5e-5)
+    # Initialize early stopping variables
+    best_loss = float('inf')
+    best_model_weights = None
+    patience = 100
+
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
 
     for epoch in range(num_epochs):
         optimizer.zero_grad()
@@ -107,5 +113,16 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
             if epoch % 5000 == 0:
                 print(f"Epoch {epoch} || Total Loss: {total_loss.item():.4f}, Loss Data: {loss_data.item():.4f}, Loss IC: {loss_ic.item():.4f}, Loss ODE: {loss_pde.item():.4f}")
                 print(f"mu_max: {net.mu_max.item():.4f}, K_s: {net.K_s.item():.4f}, Y_xs: {net.Y_xs.item():.4f}")   
-                
+        
+        if total_loss < best_loss:
+            best_loss = total_loss
+            best_model_weights = copy.deepcopy(net.state_dict())
+            patience = 100
+        else:
+            patience -= 1
+            if patience == 0:
+                print(f"Early stopping at epoch {epoch}")
+                net.load_state_dict(best_model_weights)
+                break
+        
     return net, total_loss.item()
