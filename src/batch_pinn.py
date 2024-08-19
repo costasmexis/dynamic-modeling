@@ -34,7 +34,7 @@ class PINN(nn.Module):
         self.hidden3 = nn.Linear(50, 10)
         self.output = nn.Linear(10, output_dim)
 
-        self.mu_max = nn.Parameter(torch.tensor([0.5]))
+        self.mu_max = nn.Parameter(torch.tensor([0.6]))
         self.K_s = nn.Parameter(torch.tensor([0.5]))
         self.Y_xs = nn.Parameter(torch.tensor([0.5]))
 
@@ -93,9 +93,9 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
     # Initialize early stopping variables
     best_loss = float('inf')
     best_model_weights = None
-    patience = 100
+    patience = 1000
 
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=5e-5)
 
     for epoch in range(num_epochs):
         optimizer.zero_grad()
@@ -103,7 +103,7 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
         
         loss_data = nn.MSELoss()(u_pred, X_S)
         loss_ic = nn.MSELoss()(u_pred[0], X_S[0]) 
-        loss_pde = loss_ode(net, df["RTime"].min(), df["RTime"].max())
+        loss_pde = loss_ode(net, df["RTime"].min(), df["RTime"].max()) 
 
         total_loss = loss_data + loss_ic + loss_pde
         total_loss.backward()
@@ -117,7 +117,7 @@ def train(net, t, X_S, df, num_epochs=1000, verbose=True):
         if total_loss < best_loss:
             best_loss = total_loss
             best_model_weights = copy.deepcopy(net.state_dict())
-            patience = 100
+            patience = 1000
         else:
             patience -= 1
             if patience == 0:
