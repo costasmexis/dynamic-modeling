@@ -8,12 +8,16 @@ import matplotlib.pyplot as plt
 
 from system_ode import Fs, Volume, K_S, Y_XS, S_IN, T_START, T_END
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 # Reproducibility
 SEED = 42
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# Parameter values
+LEARNING_RATE = 1e-3
+NUM_COLLOCATION = 50
 
 
 def numpy_to_tensor(array):
@@ -31,11 +35,11 @@ class PINN(nn.Module):
         output_dim: int,
     ):
         super(PINN, self).__init__()
-        self.input = nn.Linear(input_dim, 50)
-        self.fc1 = nn.Linear(50, 300)
-        self.hidden = nn.Linear(300, 300)
-        self.fc2 = nn.Linear(300, 50)
-        self.output = nn.Linear(50, output_dim)
+        self.input = nn.Linear(input_dim, 5)
+        self.fc1 = nn.Linear(5, 10)
+        self.hidden = nn.Linear(10, 10)
+        self.fc2 = nn.Linear(10, 5)
+        self.output = nn.Linear(5, output_dim)
 
         # Kinetic parameters
         self.mu_max = nn.Parameter(torch.tensor([0.3]))
@@ -71,7 +75,7 @@ def loss_fn(
         torch.linspace(
             t_start,
             t_end,
-            steps=50,
+            steps=NUM_COLLOCATION,
         )
         .view(-1, 1)
         .requires_grad_(True)
@@ -109,7 +113,7 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
 
     net = PINN(1, 3).to(DEVICE)
 
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
 
     # Loss weights
     w_data, w_ode, w_ic = 1, 1, 1
@@ -118,7 +122,7 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
     best_loss = float("inf")
     best_model_weights = None
     patience = 1000
-    threshold = 1e-2
+    threshold = 1e-3
 
     for epoch in range(num_epochs):
         optimizer.zero_grad()
