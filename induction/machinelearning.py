@@ -17,8 +17,10 @@ torch.manual_seed(SEED)
 
 # Parameter values
 LEARNING_RATE = 1e-3
-NUM_COLLOCATION = 50
-
+NUM_COLLOCATION = 25
+PATIENCE = 1000
+THRESHOLD = 1e-3
+EARLY_STOPPING_EPOCH = 1
 
 def numpy_to_tensor(array):
     return (
@@ -27,7 +29,6 @@ def numpy_to_tensor(array):
         .reshape(-1, 1)
     )
 
-
 class PINN(nn.Module):
     def __init__(
         self,
@@ -35,22 +36,25 @@ class PINN(nn.Module):
         output_dim: int,
     ):
         super(PINN, self).__init__()
-        self.input = nn.Linear(input_dim, 5)
-        self.fc1 = nn.Linear(5, 10)
-        self.hidden = nn.Linear(10, 10)
-        self.fc2 = nn.Linear(10, 5)
-        self.output = nn.Linear(5, output_dim)
+        self.input = nn.Linear(input_dim, 64)
+        self.fc1 = nn.Linear(64, 128)
+        self.hidden1 = nn.Linear(128, 256)
+        self._hidden = nn.Linear(256, 256)
+        self.hidden2 = nn.Linear(256, 128)
+        self.fc2 = nn.Linear(128, 32)
+        self.output = nn.Linear(32, output_dim)
 
         # Kinetic parameters
-        self.mu_max = nn.Parameter(torch.tensor([0.3]))
-        self.alpha = nn.Parameter(torch.tensor([0.3]))
+        self.mu_max = nn.Parameter(torch.tensor([0.5]))
+        self.alpha = nn.Parameter(torch.tensor([0.5]))
 
     def forward(self, x):
-        x = torch.tanh(self.input(x))
-        x = torch.tanh(self.fc1(x))
-        x = torch.relu(self.hidden(x))
-        x = torch.relu(self.hidden(x))
-        x = torch.tanh(self.fc2(x))
+        x = nn.functional.gelu(self.input(x))
+        x = nn.functional.gelu(self.fc1(x))
+        x = nn.functional.gelu(self.hidden1(x))
+        x = nn.functional.gelu(self._hidden(x))
+        x = nn.functional.gelu(self.hidden2(x))
+        x = nn.functional.gelu(self.fc2(x))
         x = self.output(x)
         return x
 
@@ -109,20 +113,22 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
     X_train = numpy_to_tensor(train_df["Biomass"].values)
     S_train = numpy_to_tensor(train_df["Glucose"].values)
     P_train = numpy_to_tensor(train_df["Protein"].values)
+
     u_train = torch.cat((X_train, S_train, P_train), dim=1).to(DEVICE)
 
     net = PINN(1, 3).to(DEVICE)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.75)
 
     # Loss weights
-    w_data, w_ode, w_ic = 1, 1, 1
+    w_data, w_ode, w_ic = 1, 1, 0
 
     # Initialize early stopping variables
     best_loss = float("inf")
     best_model_weights = None
-    patience = 1000
-    threshold = 1e-3
+    patience = PATIENCE
+    threshold = THRESHOLD
 
     for epoch in range(num_epochs):
         optimizer.zero_grad()
@@ -135,6 +141,7 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
         loss = loss_data + loss_ode + loss_ic
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         if epoch % 100 == 0:
             print(
@@ -142,7 +149,7 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
             )
             print(f"mu_max: {net.mu_max.item():.2f}, alpha: {net.alpha.item():.2f}")
 
-        if epoch >= 10000:
+        if epoch >= EARLY_STOPPING_EPOCH:
             if loss < best_loss - threshold:
                 best_loss = loss
                 best_model_weights = copy.deepcopy(net.state_dict())
@@ -166,7 +173,6 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
 def plot_net_predictions(
     full_df: pd.DataFrame, train_df: pd.DataFrame, u_pred: pd.DataFrame
 ):
-    
     _, ax = plt.subplots(1, 2, figsize=(12, 3))
     ax[0].scatter(
         full_df["RTime"],

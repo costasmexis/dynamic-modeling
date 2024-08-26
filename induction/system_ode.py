@@ -11,11 +11,11 @@ NUM_SAMPLES = 25
 t_sim = np.linspace(T_START, T_END, NUM_SAMPLES)
 
 # Kinetic parameters
-MU_MAX = 0.45  # 1/hour
+MU_MAX = 0.87  # 1/hour
 K_S = 0.20  # g/liter
 Y_XS = 0.41  # g/g
 S_IN = 10.0  # g/liter
-ALPHA = 0.60
+ALPHA = 0.30
 
 # Initial conditions
 X0, S0, P0, V0 = 0.05, 10.0, 0.0, 1.0
