@@ -93,9 +93,9 @@ def PlotSolution(df: pd.DataFrame):
 # Plot predictions vs actual
 def PlotPredictions(train_df: pd.DataFrame, df_pred: pd.DataFrame):
     plt.figure(figsize=(12, 4))
-    plt.scatter(train_df['RTime'], train_df['Biomass'], label="_Biomass", s=50, alpha=0.3)
-    plt.scatter(train_df['RTime'], train_df['Glucose'], label="_Glucose", s=50, alpha=0.3)
-    plt.scatter(train_df['RTime'], train_df['Protein'], label="_Protein", s=50, alpha=0.3)
+    plt.scatter(train_df['RTime'], train_df['Biomass'], label="Biomass", s=50, alpha=0.3)
+    plt.scatter(train_df['RTime'], train_df['Glucose'], label="Glucose", s=50, alpha=0.3)
+    plt.scatter(train_df['RTime'], train_df['Protein'], label="Protein", s=50, alpha=0.3)
     plt.plot(df_pred['RTime'], df_pred['Biomass'], label="_Biomass", alpha=1)
     plt.plot(df_pred['RTime'], df_pred['Glucose'], label="_Glucose", alpha=1)
     plt.plot(df_pred['RTime'], df_pred['Protein'], label="_Protein", alpha=1)
