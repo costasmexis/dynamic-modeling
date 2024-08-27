@@ -192,50 +192,40 @@ def main(
 
 
 def plot_net_predictions(
-    full_df: pd.DataFrame, train_df: pd.DataFrame, u_pred: pd.DataFrame
+    full_df: pd.DataFrame, train_df: pd.DataFrame, u_pred: pd.DataFrame, title: str
 ):
-    _, ax = plt.subplots(1, 2, figsize=(12, 3))
-    ax[0].scatter(
+    plt.figure(figsize=(12, 3))
+    plt.scatter(
         full_df["RTime"],
         full_df["Biomass"],
         color="orange",
         label="_Biomass",
         alpha=0.3,
     )
-    ax[0].scatter(
+    plt.scatter(
         full_df["RTime"], full_df["Glucose"], color="green", label="_Glucose", alpha=0.3
     )
-    ax[0].scatter(
+    plt.scatter(
         train_df["RTime"],
         train_df["Biomass"],
         color="orange",
         label="Biomass",
         alpha=1.0,
     )
-    ax[0].scatter(
+    plt.scatter(
         train_df["RTime"],
         train_df["Glucose"],
         color="green",
         label="Glucose",
         alpha=1.0,
     )
-    ax[1].scatter(
-        full_df["RTime"], full_df["Protein"], color="blue", label="_Protein", alpha=0.3
-    )
-    ax[1].scatter(
-        train_df["RTime"], train_df["Protein"], color="blue", label="Protein", alpha=1.0
-    )
 
-    ax[0].plot(u_pred["RTime"], u_pred["Biomass"], color="orange", label="Biomass_A")
-    ax[0].plot(u_pred["RTime"], u_pred["Glucose"], color="green", label="Glucose_A")
-    ax[1].plot(u_pred["RTime"], u_pred["Protein"], color="blue", label="Protein_A")
+    plt.plot(u_pred["RTime"], u_pred["Biomass"], color="orange", marker='x', label="_Biomass")
+    plt.plot(u_pred["RTime"], u_pred["Glucose"], color="green", marker='x', label="_Glucose")
 
-    ax[0].legend()
-    ax[1].legend()
-
-    ax[0].set_xlabel("Time")
-    ax[0].set_ylabel("Concentration")
-    ax[1].set_xlabel("Time")
-    ax[1].set_ylabel("Concentration")
+    plt.title(title)
+    plt.legend()
+    plt.xlabel("Time")
+    plt.ylabel("Concentration")
 
     plt.show()
