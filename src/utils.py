@@ -1,14 +1,16 @@
+from typing import Tuple
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from typing import Tuple
+from scipy.integrate import cumulative_trapezoid
 
 pd.options.mode.chained_assignment = None
 
 
 def get_data_and_feed(
-    file_name: str, experiment: str
+    file_name: str, experiment: str, keep_only: str = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    data = get_experimental_data(file_name=file_name)
+    data = get_experimental_data(file_name=file_name, keep_only=keep_only)
     df = data.loc[experiment]
     feeds = pd.read_excel(file_name, sheet_name="Feeds")
     feeds.drop(columns="index", inplace=True)
@@ -71,3 +73,11 @@ def feeding_strategy(feeds: pd.DataFrame, time: float) -> float:
         if start_time <= time < end_time:
             return row["F"] / 1000
     return 0
+
+
+def get_volume(feeds: pd.DataFrame, V0: float, t: np.array) -> np.array:
+    """Integrate feeding strategy to get volume"""
+    F = [feeding_strategy(feeds=feeds, time=i) for i in t]
+    V = cumulative_trapezoid(y=F, x=t, initial=0) + V0
+    return V
+
