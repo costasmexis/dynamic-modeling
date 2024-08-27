@@ -29,6 +29,12 @@ def numpy_to_tensor(array):
         .reshape(-1, 1)
     )
 
+
+def grad(outputs, inputs):
+    return torch.autograd.grad(
+        outputs, inputs, grad_outputs=torch.ones_like(outputs), create_graph=True
+    )
+
 class PINN(nn.Module):
     def __init__(
         self,
@@ -57,13 +63,6 @@ class PINN(nn.Module):
         x = nn.functional.gelu(self.fc2(x))
         x = self.output(x)
         return x
-
-
-def grad(outputs, inputs):
-    return torch.autograd.grad(
-        outputs, inputs, grad_outputs=torch.ones_like(outputs), create_graph=True
-    )
-
 
 def loss_fn(
     net: torch.nn.Module,
@@ -169,7 +168,6 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
     return net, u_pred
 
 
-# Plot net predictions
 def plot_net_predictions(
     full_df: pd.DataFrame, train_df: pd.DataFrame, u_pred: pd.DataFrame
 ):
