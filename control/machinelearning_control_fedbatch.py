@@ -1,9 +1,14 @@
+import sys
+sys.path.append("../")
+
 from typing import Union
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import copy
+
+from src.utils import feeding_strategy, get_volume
 
 T_START = 0
 T_END = 10.5
@@ -44,22 +49,28 @@ class PINN(nn.Module):
         x = self.fc4(x)
         return x
 
-# TODO: COMPLETE 
 def loss_fn(
     net: nn.Module, 
-    u_train: torch.Tensor,
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
     feeds: pd.DataFrame,
     Sin: float,
     V0: float,
-    S0, float,
+    S0: float,
+    mu_max: float,
+    K_s: float,
+    Y_xs: float,
 ) -> torch.Tensor:
 
     t_col = numpy_to_tensor(np.arange(t_start, t_end, 1)).to(DEVICE)
     X_col = numpy_to_tensor(np.random.uniform(2.5, 5, NUM_COLLOCATION)).to(DEVICE)
     S_col = numpy_to_tensor([S0 for _ in range(len(t_col))]).to(DEVICE)
     F_col = numpy_to_tensor(np.random.uniform(15, 35, NUM_COLLOCATION)).to(DEVICE)
+    V_col = (
+        torch.tensor(get_volume(feeds=feeds, V0=V0, t=t_col.cpu().detach().numpy().reshape(-1,)), requires_grad=True)
+        .view(-1, 1)
+        .to(DEVICE)
+    )
 
     u_col = torch.cat((t_col, X_col, S_col, F_col), 1).to(DEVICE)
 
@@ -71,7 +82,10 @@ def loss_fn(
     dXdt_pred = grad(X_pred, t_col)[0]
     dSdt_pred = grad(S_pred, t_col)[0]
 
-    error_dXdt = 
+    mu = mu_max * S_pred / (K_s + S_pred)
 
+    error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
+    error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
 
-
+    error_ode = torch.mean(error_dXdt**2 + error_dSdt**2)
+    return error_ode
