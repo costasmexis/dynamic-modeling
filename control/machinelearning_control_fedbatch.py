@@ -14,8 +14,8 @@ from system_ode_fedbatch import get_volume
 NUM_EPOCHS = 30000
 LEARNING_RATE = 1e-4
 NUM_POINTS = 100
-NUM_COLLOCATION = 100
-PATIENCE = 1000
+NUM_COLLOCATION = 500
+PATIENCE = 100
 THRESHOLD = 1e-3
 EARLY_STOPPING_EPOCH = 1
 
@@ -36,7 +36,7 @@ def generate_dataset(full_df: pd.DataFrame) -> Union[torch.Tensor, torch.Tensor]
     S_train = numpy_to_tensor(df["Glucose"].values)
     F_train = numpy_to_tensor(df["F"].values)
 
-    in_train = torch.cat([t_train, X_train, S_train], dim=1)
+    in_train = torch.cat([t_train, X_train, S_train, F_train], dim=1)
     out_train = torch.cat([X_train, S_train], dim=1)
     return in_train, out_train
 
@@ -78,7 +78,6 @@ def loss_fn(
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
     Sin: float,
-    V0: float,
     S0: float,
     mu_max: float,
     K_s: float,
@@ -92,7 +91,7 @@ def loss_fn(
     F_col = numpy_to_tensor([0.01 for _ in range(len(t_col))]).to(DEVICE)
     V_col = numpy_to_tensor([get_volume(t) for t in t_col]).to(DEVICE)
 
-    u_col = torch.cat((t_col, X_col, S_col), 1).to(DEVICE)
+    u_col = torch.cat((t_col, X_col, S_col, F_col), 1).to(DEVICE)
 
     preds = net.forward(u_col)
 
@@ -117,14 +116,14 @@ def main(
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
     S_in: float,
-    V0: float,
     S0: float,
     mu_max: float,
     Ks: float,
     Yxs: float,
+    verbose: int = 100
 ):
     
-    net = PINN(3, 2).to(DEVICE)
+    net = PINN(4, 2).to(DEVICE)
     optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
 
     # Loss weights
@@ -142,13 +141,13 @@ def main(
 
         loss_data = nn.MSELoss()(preds, out_train)
 
-        loss_ode = loss_fn(net, t_start, t_end, S_in, V0, S0, mu_max, Ks, Yxs)
+        loss_ode = loss_fn(net, t_start, t_end, S_in, S0, mu_max, Ks, Yxs)
 
         loss = w_data * loss_data + w_ode * loss_ode
         loss.backward()
         optimizer.step()
 
-        if epoch % 100 == 0:
+        if epoch % verbose == 0:
             print(
                 f"Epoch {epoch}, Loss_data: {loss_data.item():.4f}, Loss_ode: {loss_ode.item():.4f}"
             )

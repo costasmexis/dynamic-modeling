@@ -64,6 +64,7 @@ def generate_data() -> pd.DataFrame:
     # Add smal noise to BIomass and Glucose
     full_df['Biomass'] = full_df['Biomass'] + np.random.normal(0,0.2,NUM_SAMPLES)
     full_df['Glucose'] = full_df['Glucose'] + np.random.uniform(0,0.1,NUM_SAMPLES)
+    full_df['F'] = [Fs(t) for t in full_df['RTime']]
     return full_df
 
 def integrate_Fs(a, b):
