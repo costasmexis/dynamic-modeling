@@ -12,8 +12,8 @@ import copy
 from system_ode_fedbatch import get_volume
 
 NUM_EPOCHS = 30000
-LEARNING_RATE = 1e-4
-NUM_POINTS = 100
+LEARNING_RATE = 1e-3
+NUM_POINTS = 500
 NUM_COLLOCATION = 500
 PATIENCE = 100
 THRESHOLD = 1e-3
@@ -68,6 +68,7 @@ class PINN(nn.Module):
         x = torch.relu(self.input(x))
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
+        x = torch.relu(self.fc2(x))
         x = torch.relu(self.fc3(x))
         x = self.output(x)
         return x
@@ -85,7 +86,7 @@ def loss_fn(
 ) -> torch.Tensor:
     
     t_col = numpy_to_tensor(np.linspace(t_start, t_end, NUM_COLLOCATION)).to(DEVICE)
-    X_col = numpy_to_tensor(np.random.uniform(2.5, 5, NUM_COLLOCATION)).to(DEVICE)
+    X_col = numpy_to_tensor(np.random.uniform(3, 4, NUM_COLLOCATION)).to(DEVICE)
     S_col = numpy_to_tensor([S0 for _ in range(len(t_col))]).to(DEVICE)
     F_col = numpy_to_tensor(np.random.uniform(0.015, 0.065, NUM_COLLOCATION)).to(DEVICE)
     F_col = numpy_to_tensor([0.01 for _ in range(len(t_col))]).to(DEVICE)
