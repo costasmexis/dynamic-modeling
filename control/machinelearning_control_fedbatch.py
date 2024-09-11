@@ -11,10 +11,10 @@ import copy
 
 from system_ode_fedbatch import get_volume
 
-NUM_EPOCHS = 30000
+NUM_EPOCHS = 5000
 LEARNING_RATE = 1e-3
-NUM_POINTS = 500
-NUM_COLLOCATION = 500
+NUM_POINTS = 100
+NUM_COLLOCATION = 1000
 PATIENCE = 100
 THRESHOLD = 1e-3
 EARLY_STOPPING_EPOCH = 1
@@ -23,8 +23,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def generate_dataset(full_df: pd.DataFrame) -> Union[torch.Tensor, torch.Tensor]:
+    """ Generate dataset of random multiple initial conditions and control actions """
     df = pd.DataFrame(columns=["t", "Biomass", "Glucose"])
-    df["Biomass"] = np.random.uniform(2.5, 5, NUM_POINTS)
+    df["Biomass"] = np.random.uniform(3, 4, NUM_POINTS)
     df["Glucose"] = full_df["Glucose"].iloc[0]
     df["t"] = 0.0
     df["F"] = np.random.uniform(0.015, 0.065, NUM_POINTS) 
@@ -59,9 +60,9 @@ class PINN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(PINN, self).__init__()
         self.input = nn.Linear(input_dim, 64)
-        self.fc1 = nn.Linear(64, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 64)
+        self.fc1 = nn.Linear(64, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, 64)
         self.output = nn.Linear(64, output_dim)
 
     def forward(self, x):
@@ -89,9 +90,8 @@ def loss_fn(
     X_col = numpy_to_tensor(np.random.uniform(3, 4, NUM_COLLOCATION)).to(DEVICE)
     S_col = numpy_to_tensor([S0 for _ in range(len(t_col))]).to(DEVICE)
     F_col = numpy_to_tensor(np.random.uniform(0.015, 0.065, NUM_COLLOCATION)).to(DEVICE)
-    F_col = numpy_to_tensor([0.01 for _ in range(len(t_col))]).to(DEVICE)
     V_col = numpy_to_tensor([get_volume(t) for t in t_col]).to(DEVICE)
-
+    
     u_col = torch.cat((t_col, X_col, S_col, F_col), 1).to(DEVICE)
 
     preds = net.forward(u_col)
@@ -126,7 +126,7 @@ def main(
     
     net = PINN(4, 2).to(DEVICE)
     optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
-
+    
     # Loss weights
     w_data, w_ode, w_ic = 1, 1, 1
 
@@ -143,7 +143,7 @@ def main(
         loss_data = nn.MSELoss()(preds, out_train)
 
         loss_ode = loss_fn(net, t_start, t_end, S_in, S0, mu_max, Ks, Yxs)
-
+        
         loss = w_data * loss_data + w_ode * loss_ode
         loss.backward()
         optimizer.step()

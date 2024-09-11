@@ -67,7 +67,7 @@ def generate_data() -> pd.DataFrame:
     full_df['F'] = [Fs(t) for t in full_df['RTime']]
     return full_df
 
-def integrate_Fs(a, b):
+def integrate_Fs(a, b) -> float:
     integral = 0
     if b <= 4.73:
         integral = 0.017 * (b - a)
@@ -97,7 +97,7 @@ def integrate_Fs(a, b):
         integral = 0.017 * (b - a)
     return integral
 
-def get_volume(t):
+def get_volume(t) -> float:
     if t <= 4.73:
         return integrate_Fs(0, t) + V0
     elif t <= 7.33:
