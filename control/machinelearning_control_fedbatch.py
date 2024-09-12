@@ -24,6 +24,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def generate_dataset(full_df: pd.DataFrame) -> Union[torch.Tensor, torch.Tensor]:
     """ Generate dataset of random multiple initial conditions and control actions """
+    
     df = pd.DataFrame(columns=["t", "Biomass", "Glucose"])
     df["Biomass"] = np.random.uniform(3, 4, NUM_POINTS)
     df["Glucose"] = full_df["Glucose"].iloc[0]
@@ -60,20 +61,20 @@ class PINN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(PINN, self).__init__()
         self.input = nn.Linear(input_dim, 64)
-        self.fc1 = nn.Linear(64, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, 64)
+        self.fc1 = nn.Linear(64, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 64)
         self.output = nn.Linear(64, output_dim)
 
     def forward(self, x):
         x = torch.relu(self.input(x))
         x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = torch.relu(self.fc2(x))
+        x = torch.tanh(self.fc2(x))
+        x = torch.tanh(self.fc2(x))
         x = torch.relu(self.fc3(x))
         x = self.output(x)
         return x
-
+    
 
 def loss_fn(
     net: nn.Module,
@@ -107,7 +108,7 @@ def loss_fn(
     error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
     error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
 
-    error_ode = torch.mean(error_dXdt**2 + error_dSdt**2)
+    error_ode = torch.mean(0.5*error_dXdt**2 + 0.5*error_dSdt**2)
     return error_ode
 
 
@@ -126,7 +127,8 @@ def main(
     
     net = PINN(4, 2).to(DEVICE)
     optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
-    
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2500, gamma=0.7)
+
     # Loss weights
     w_data, w_ode, w_ic = 1, 1, 1
 
@@ -139,15 +141,19 @@ def main(
     for epoch in range(NUM_EPOCHS):
         optimizer.zero_grad()
         preds = net.forward(in_train)
-
-        loss_data = nn.MSELoss()(preds, out_train)
-
+        X_pred = preds[:, 0].view(-1, 1)
+        S_pred = preds[:, 1].view(-1, 1)
+        loss_X = nn.MSELoss()(X_pred, out_train[:, 0].view(-1, 1))
+        loss_S = nn.MSELoss()(S_pred, out_train[:, 1].view(-1, 1))
+        loss_data = 1/2 * (loss_X + loss_S)
+        
         loss_ode = loss_fn(net, t_start, t_end, S_in, S0, mu_max, Ks, Yxs)
         
         loss = w_data * loss_data + w_ode * loss_ode
         loss.backward()
         optimizer.step()
-
+        scheduler.step()
+        
         if epoch % verbose == 0:
             print(
                 f"Epoch {epoch}, Loss_data: {loss_data.item():.4f}, Loss_ode: {loss_ode.item():.4f}"
