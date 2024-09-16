@@ -13,8 +13,8 @@ from system_ode_fedbatch import get_volume
 
 NUM_EPOCHS = 5000
 LEARNING_RATE = 1e-3
-NUM_POINTS = 100
-NUM_COLLOCATION = 1000
+NUM_POINTS = 25
+NUM_COLLOCATION = 25
 PATIENCE = 100
 THRESHOLD = 1e-3
 EARLY_STOPPING_EPOCH = 1
@@ -81,34 +81,37 @@ def loss_fn(
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
     Sin: float,
-    S0: float,
+    in_train: torch.Tensor,
     mu_max: float,
     K_s: float,
     Y_xs: float,
 ) -> torch.Tensor:
     
-    t_col = numpy_to_tensor(np.linspace(t_start, t_end, NUM_COLLOCATION)).to(DEVICE)
-    X_col = numpy_to_tensor(np.random.uniform(3, 4, NUM_COLLOCATION)).to(DEVICE)
-    S_col = numpy_to_tensor([S0 for _ in range(len(t_col))]).to(DEVICE)
-    F_col = numpy_to_tensor(np.random.uniform(0.015, 0.065, NUM_COLLOCATION)).to(DEVICE)
-    V_col = numpy_to_tensor([get_volume(t) for t in t_col]).to(DEVICE)
-    
-    u_col = torch.cat((t_col, X_col, S_col, F_col), 1).to(DEVICE)
+    error_ode = 0
+    for i in range(in_train.shape[0]):
+        t_col = numpy_to_tensor(np.linspace(t_start, t_end, NUM_COLLOCATION)).to(DEVICE)
+        X_col = numpy_to_tensor([in_train[i][1].item()]*NUM_COLLOCATION).to(DEVICE)
+        S_col = numpy_to_tensor([in_train[i][2].item()]*NUM_COLLOCATION).to(DEVICE)
+        F_col = numpy_to_tensor([in_train[i][3].item()]*NUM_COLLOCATION).to(DEVICE)
+        V_col = numpy_to_tensor([get_volume(t) for t in t_col]).to(DEVICE)
+        
+        u_col = torch.cat((t_col, X_col, S_col, F_col), 1).to(DEVICE)
 
-    preds = net.forward(u_col)
+        preds = net.forward(u_col)
 
-    X_pred = preds[:, 0].view(-1, 1)
-    S_pred = preds[:, 1].view(-1, 1)
+        X_pred = preds[:, 0].view(-1, 1)
+        S_pred = preds[:, 1].view(-1, 1)
 
-    dXdt_pred = grad(X_pred, t_col)[0]
-    dSdt_pred = grad(S_pred, t_col)[0]
+        dXdt_pred = grad(X_pred, t_col)[0]
+        dSdt_pred = grad(S_pred, t_col)[0]
 
-    mu = mu_max * S_pred / (K_s + S_pred)
+        mu = mu_max * S_pred / (K_s + S_pred)
 
-    error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
-    error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
+        error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
+        error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
 
-    error_ode = torch.mean(0.5*error_dXdt**2 + 0.5*error_dSdt**2)
+        error_ode = error_ode + torch.mean(0.5*error_dXdt**2 + 0.5*error_dSdt**2)
+        
     return error_ode
 
 
@@ -147,7 +150,7 @@ def main(
         loss_S = nn.MSELoss()(S_pred, out_train[:, 1].view(-1, 1))
         loss_data = 1/2 * (loss_X + loss_S)
         
-        loss_ode = loss_fn(net, t_start, t_end, S_in, S0, mu_max, Ks, Yxs)
+        loss_ode = loss_fn(net, t_start, t_end, S_in, in_train, mu_max, Ks, Yxs)
         
         loss = w_data * loss_data + w_ode * loss_ode
         loss.backward()
