@@ -13,9 +13,9 @@ from system_ode_fedbatch import get_volume
 
 NUM_EPOCHS = 5000
 LEARNING_RATE = 1e-3
-NUM_POINTS = 25
-NUM_COLLOCATION = 25
-PATIENCE = 100
+NUM_POINTS = 100
+NUM_COLLOCATION = 5000
+PATIENCE = 100 
 THRESHOLD = 1e-3
 EARLY_STOPPING_EPOCH = 1
 
@@ -60,18 +60,18 @@ def grad(outputs, inputs):
 class PINN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(PINN, self).__init__()
-        self.input = nn.Linear(input_dim, 64)
-        self.fc1 = nn.Linear(64, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 64)
-        self.output = nn.Linear(64, output_dim)
+        self.input = nn.Linear(input_dim, 256)
+        self.fc1 = nn.Linear(256, 1024)
+        self.fc2 = nn.Linear(1024, 1024)
+        self.fc3 = nn.Linear(1024, 256)
+        self.output = nn.Linear(256, output_dim)
 
     def forward(self, x):
-        x = torch.relu(self.input(x))
-        x = torch.relu(self.fc1(x))
+        x = torch.tanh(self.input(x))
+        x = torch.tanh(self.fc1(x))
         x = torch.tanh(self.fc2(x))
         x = torch.tanh(self.fc2(x))
-        x = torch.relu(self.fc3(x))
+        x = torch.tanh(self.fc3(x))
         x = self.output(x)
         return x
     
@@ -81,36 +81,37 @@ def loss_fn(
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
     Sin: float,
-    in_train: torch.Tensor,
+    S0: float,
     mu_max: float,
     K_s: float,
     Y_xs: float,
 ) -> torch.Tensor:
+
+
+    # TODO: Implement the loss function
+    # Create dataset for collocation points
+    t_col = numpy_to_tensor(np.random.uniform(t_start, t_end, NUM_COLLOCATION))
+    X0_col = numpy_to_tensor(np.random.uniform(3, 4, NUM_COLLOCATION))
+    S0_col = numpy_to_tensor([S0] * NUM_COLLOCATION)
+    F_col = numpy_to_tensor(np.random.uniform(0.015, 0.065, NUM_COLLOCATION))
+    V_col = numpy_to_tensor([get_volume(t) for t in t_col])
     
-    error_ode = 0
-    for i in range(in_train.shape[0]):
-        t_col = numpy_to_tensor(np.linspace(t_start, t_end, NUM_COLLOCATION)).to(DEVICE)
-        X_col = numpy_to_tensor([in_train[i][1].item()]*NUM_COLLOCATION).to(DEVICE)
-        S_col = numpy_to_tensor([in_train[i][2].item()]*NUM_COLLOCATION).to(DEVICE)
-        F_col = numpy_to_tensor([in_train[i][3].item()]*NUM_COLLOCATION).to(DEVICE)
-        V_col = numpy_to_tensor([get_volume(t) for t in t_col]).to(DEVICE)
-        
-        u_col = torch.cat((t_col, X_col, S_col, F_col), 1).to(DEVICE)
+    u_col = torch.cat([t_col, X0_col, S0_col, F_col], dim=1)
+    
+    preds = net.forward(u_col)
 
-        preds = net.forward(u_col)
+    X_pred = preds[:, 0].view(-1, 1)
+    S_pred = preds[:, 1].view(-1, 1)
 
-        X_pred = preds[:, 0].view(-1, 1)
-        S_pred = preds[:, 1].view(-1, 1)
+    dXdt_pred = grad(X_pred, t_col)[0]
+    dSdt_pred = grad(S_pred, t_col)[0]
 
-        dXdt_pred = grad(X_pred, t_col)[0]
-        dSdt_pred = grad(S_pred, t_col)[0]
+    mu = mu_max * S_pred / (K_s + S_pred)
 
-        mu = mu_max * S_pred / (K_s + S_pred)
+    error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
+    error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
 
-        error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
-        error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
-
-        error_ode = error_ode + torch.mean(0.5*error_dXdt**2 + 0.5*error_dSdt**2)
+    error_ode = torch.mean(0.5*error_dXdt**2 + 0.5*error_dSdt**2)
         
     return error_ode
 
@@ -150,7 +151,7 @@ def main(
         loss_S = nn.MSELoss()(S_pred, out_train[:, 1].view(-1, 1))
         loss_data = 1/2 * (loss_X + loss_S)
         
-        loss_ode = loss_fn(net, t_start, t_end, S_in, in_train, mu_max, Ks, Yxs)
+        loss_ode = loss_fn(net, t_start, t_end, S_in, S0, mu_max, Ks, Yxs)
         
         loss = w_data * loss_data + w_ode * loss_ode
         loss.backward()
