@@ -11,25 +11,30 @@ import copy
 
 from system_ode_fedbatch import get_volume
 
-NUM_EPOCHS = 5000
-LEARNING_RATE = 1e-3
-NUM_POINTS = 100
+NUM_EPOCHS = 30000
+LEARNING_RATE = 1e-4
 NUM_COLLOCATION = 5000
-PATIENCE = 100 
+PATIENCE = 100
 THRESHOLD = 1e-3
 EARLY_STOPPING_EPOCH = 1
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def generate_dataset(full_df: pd.DataFrame) -> Union[torch.Tensor, torch.Tensor]:
-    """ Generate dataset of random multiple initial conditions and control actions """
-    
+def generate_dataset(
+    data: pd.DataFrame, num_points: int
+) -> Union[torch.Tensor, torch.Tensor]:
+    """Generate dataset of random multiple initial conditions and control actions"""
+
     df = pd.DataFrame(columns=["t", "Biomass", "Glucose"])
-    df["Biomass"] = np.random.uniform(3, 4, NUM_POINTS)
-    df["Glucose"] = full_df["Glucose"].iloc[0]
+    df["Biomass"] = np.random.uniform(
+        data["Biomass"].min(), data["Biomass"].max(), num_points
+    )
+    df["Glucose"] = np.random.uniform(
+        data["Glucose"].min(), data["Glucose"].max(), num_points
+    )
+    df["F"] = np.random.uniform(0.015, 0.065, num_points)
     df["t"] = 0.0
-    df["F"] = np.random.uniform(0.015, 0.065, NUM_POINTS) 
 
     print(f"Dataset shape: {df.shape}")
 
@@ -60,44 +65,44 @@ def grad(outputs, inputs):
 class PINN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(PINN, self).__init__()
-        self.input = nn.Linear(input_dim, 256)
-        self.fc1 = nn.Linear(256, 1024)
+        self.input = nn.Linear(input_dim, 128)
+        self.fc1 = nn.Linear(128, 1024)
         self.fc2 = nn.Linear(1024, 1024)
-        self.fc3 = nn.Linear(1024, 256)
-        self.output = nn.Linear(256, output_dim)
+        self.fc3 = nn.Linear(1024, 128)
+        self.output = nn.Linear(128, output_dim)
 
     def forward(self, x):
         x = torch.tanh(self.input(x))
         x = torch.tanh(self.fc1(x))
         x = torch.tanh(self.fc2(x))
-        x = torch.tanh(self.fc2(x))
         x = torch.tanh(self.fc3(x))
         x = self.output(x)
         return x
-    
+
 
 def loss_fn(
     net: nn.Module,
+    data: pd.DataFrame,
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
     Sin: float,
-    S0: float,
     mu_max: float,
     K_s: float,
     Y_xs: float,
 ) -> torch.Tensor:
-
-
-    # TODO: Implement the loss function
-    # Create dataset for collocation points
+    
     t_col = numpy_to_tensor(np.random.uniform(t_start, t_end, NUM_COLLOCATION))
-    X0_col = numpy_to_tensor(np.random.uniform(3, 4, NUM_COLLOCATION))
-    S0_col = numpy_to_tensor([S0] * NUM_COLLOCATION)
+    X0_col = numpy_to_tensor(
+        np.random.uniform(data["Biomass"].min(), data["Biomass"].max(), NUM_COLLOCATION)
+    )
+    S0_col = numpy_to_tensor(
+        np.random.uniform(data["Glucose"].min(), data["Glucose"].max(), NUM_COLLOCATION)
+    )
     F_col = numpy_to_tensor(np.random.uniform(0.015, 0.065, NUM_COLLOCATION))
     V_col = numpy_to_tensor([get_volume(t) for t in t_col])
-    
+
     u_col = torch.cat([t_col, X0_col, S0_col, F_col], dim=1)
-    
+
     preds = net.forward(u_col)
 
     X_pred = preds[:, 0].view(-1, 1)
@@ -111,24 +116,23 @@ def loss_fn(
     error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
     error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
 
-    error_ode = torch.mean(0.5*error_dXdt**2 + 0.5*error_dSdt**2)
-        
+    error_ode = 0.5 * torch.mean(error_dXdt**2) + 0.5 * torch.mean(error_dSdt**2)
+
     return error_ode
 
 
 def main(
+    data: pd.DataFrame,
     in_train: torch.Tensor,
     out_train: torch.Tensor,
     t_start: Union[np.float32, torch.Tensor],
     t_end: Union[np.float32, torch.Tensor],
     S_in: float,
-    S0: float,
     mu_max: float,
     Ks: float,
     Yxs: float,
-    verbose: int = 100
+    verbose: int = 100,
 ):
-    
     net = PINN(4, 2).to(DEVICE)
     optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2500, gamma=0.7)
@@ -149,19 +153,22 @@ def main(
         S_pred = preds[:, 1].view(-1, 1)
         loss_X = nn.MSELoss()(X_pred, out_train[:, 0].view(-1, 1))
         loss_S = nn.MSELoss()(S_pred, out_train[:, 1].view(-1, 1))
-        loss_data = 1/2 * (loss_X + loss_S)
-        
-        loss_ode = loss_fn(net, t_start, t_end, S_in, S0, mu_max, Ks, Yxs)
-        
+        loss_data = 0.5 * (loss_X + loss_S)
+
+        loss_ode = loss_fn(net, data, t_start, t_end, S_in, mu_max, Ks, Yxs)
+
         loss = w_data * loss_data + w_ode * loss_ode
         loss.backward()
         optimizer.step()
         scheduler.step()
-        
+
         if epoch % verbose == 0:
             print(
                 f"Epoch {epoch}, Loss_data: {loss_data.item():.4f}, Loss_ode: {loss_ode.item():.4f}"
             )
+            # Print the current learning rate of the optimizer
+            for param_group in optimizer.param_groups:
+                print("Current learning rate: ", param_group["lr"])
 
         if epoch >= EARLY_STOPPING_EPOCH:
             if loss < best_loss - threshold:
