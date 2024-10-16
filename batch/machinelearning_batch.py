@@ -5,6 +5,7 @@ import copy
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -198,3 +199,38 @@ def plot_net_predictions(
     plt.ylabel("Concentration")
 
     plt.show()
+
+def validate_predictions(full_df: pd.DataFrame, u_pred: pd.DataFrame, i: int) -> None:
+    """ Validate the prediction accuracy of the PINN
+
+    :param full_df: Full training dataset
+    :type full_df: pd.DataFrame
+    :param u_pred: Predictions of the PINN 
+    :type u_pred: pd.DataFrame
+    :param i: Number of training data points used for training
+    :type i: int
+    """
+    print('************************************************************************')
+    print('************************************************************************')
+    
+    full_df['Biomass_pred'] = u_pred['Biomass'].values
+    full_df['Glucose_pred'] = u_pred['Glucose'].values
+    try:
+        next_biomass = full_df['Biomass'].iloc[i]
+        next_glucose = full_df['Glucose'].iloc[i]
+        pred_biomass = full_df['Biomass_pred'].iloc[i]
+        pred_glucose = full_df['Glucose_pred'].iloc[i]
+        print(f'Biomass error: {abs(next_biomass - pred_biomass)}')
+        print(f'Glucose error: {abs(next_glucose - pred_glucose)}')
+        print(f'Real Biomass: {next_biomass} || Predicted Biomass: {pred_biomass}')
+        print(f'Real Glucose: {next_glucose} || Predicted Glucose: {pred_glucose}')  
+    except IndexError:
+        pass
+    biomass_mse = mean_squared_error(full_df['Biomass'], full_df['Biomass_pred'])
+    glucose_mse = mean_squared_error(full_df['Glucose'], full_df['Glucose_pred'])
+    print(f'Biomass MSE: {biomass_mse}')
+    print(f'Glucose MSE: {glucose_mse}')
+        
+    
+    
+    
