@@ -164,34 +164,34 @@ def main(
 def plot_net_predictions(
     full_df: pd.DataFrame, train_df: pd.DataFrame, u_pred: pd.DataFrame, title: str
 ):
-    plt.figure(figsize=(12, 3))
+    plt.figure(figsize=(5, 5))
     plt.scatter(
         full_df["RTime"],
         full_df["Biomass"],
-        color="orange",
+        color="green",
         label="_Biomass",
         alpha=0.3,
     )
     plt.scatter(
-        full_df["RTime"], full_df["Glucose"], color="green", label="_Glucose", alpha=0.3
+        full_df["RTime"], full_df["Glucose"], color="red", label="_Glucose", alpha=0.3
     )
     plt.scatter(
         train_df["RTime"],
         train_df["Biomass"],
-        color="orange",
+        color="green",
         label="Biomass",
         alpha=1.0,
     )
     plt.scatter(
         train_df["RTime"],
         train_df["Glucose"],
-        color="green",
+        color="red",
         label="Glucose",
         alpha=1.0,
     )
 
-    plt.plot(u_pred["RTime"], u_pred["Biomass"], color="orange", marker='x', label="_Biomass")
-    plt.plot(u_pred["RTime"], u_pred["Glucose"], color="green", marker='x', label="_Glucose")
+    plt.plot(u_pred["RTime"], u_pred["Biomass"], color="green", marker='x', label="_Biomass")
+    plt.plot(u_pred["RTime"], u_pred["Glucose"], color="red", marker='x', label="_Glucose")
 
     plt.title(title)
     plt.legend()
