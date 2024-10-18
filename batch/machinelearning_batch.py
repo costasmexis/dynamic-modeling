@@ -164,7 +164,7 @@ def main(
 def plot_net_predictions(
     full_df: pd.DataFrame, train_df: pd.DataFrame, u_pred: pd.DataFrame, title: str
 ):
-    plt.figure(figsize=(5, 5))
+    plt.figure(figsize=(12, 4))
     plt.scatter(
         full_df["RTime"],
         full_df["Biomass"],
