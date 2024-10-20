@@ -9,6 +9,7 @@ import copy
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error
 
 from src.utils import feeding_strategy, get_volume
 
@@ -49,13 +50,13 @@ class PINN(nn.Module):
     ):
         super().__init__()
         self.input = nn.Linear(input_dim, 64)
-        self.hidden = nn.Linear(64, 256)
-        self.hidden2 = nn.Linear(256, 256)
-        self.hidden3 = nn.Linear(256, 64)
+        self.hidden = nn.Linear(64, 1024)
+        self.hidden2 = nn.Linear(1024, 1024)
+        self.hidden3 = nn.Linear(1024, 64)
         self.output = nn.Linear(64, output_dim)
 
-        self.mu_max = nn.Parameter(torch.tensor(0.7, dtype=torch.float32))
-        self.K_s = nn.Parameter(torch.tensor(0.14, dtype=torch.float32))
+        self.mu_max = nn.Parameter(torch.tensor(0.5, dtype=torch.float32))
+        self.K_s = nn.Parameter(torch.tensor(0.5, dtype=torch.float32))
         self.Y_xs = nn.Parameter(torch.tensor(0.5, dtype=torch.float32))
 
     def forward(self, x):
@@ -110,6 +111,7 @@ def loss_fn(
     error_dSdt = dSdt_pred + mu * X_pred / net.Y_xs - F / V_pred * (Sin - S_pred)
 
     error_ode = torch.mean(error_dXdt**2 + error_dSdt**2)
+   
     return error_ode
 
 
@@ -163,6 +165,7 @@ def main(
         loss = loss_data + loss_ode + loss_ic
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         if epoch % verbose == 0:
             print(f"Epoch {epoch}, Loss {loss.item():.4f}")
@@ -198,30 +201,30 @@ def plot_net_predictions(
     plt.scatter(
         full_df["RTime"],
         full_df["Biomass"],
-        color="orange",
+        color="green",
         label="_Biomass",
         alpha=0.3,
     )
     plt.scatter(
-        full_df["RTime"], full_df["Glucose"], color="green", label="_Glucose", alpha=0.3
+        full_df["RTime"], full_df["Glucose"], color="red", label="_Glucose", alpha=0.3
     )
     plt.scatter(
         train_df["RTime"],
         train_df["Biomass"],
-        color="orange",
+        color="green",
         label="Biomass",
         alpha=1.0,
     )
     plt.scatter(
         train_df["RTime"],
         train_df["Glucose"],
-        color="green",
+        color="red",
         label="Glucose",
         alpha=1.0,
     )
 
-    plt.plot(u_pred["RTime"], u_pred["Biomass"], color="orange", marker='x', label="_Biomass")
-    plt.plot(u_pred["RTime"], u_pred["Glucose"], color="green", marker='x', label="_Glucose")
+    plt.plot(u_pred["RTime"], u_pred["Biomass"], color="green", marker='x', label="_Biomass")
+    plt.plot(u_pred["RTime"], u_pred["Glucose"], color="red", marker='x', label="_Glucose")
 
     plt.title(title)
     plt.legend()
@@ -229,3 +232,35 @@ def plot_net_predictions(
     plt.ylabel("Concentration")
 
     plt.show()
+
+
+def validate_predictions(full_df: pd.DataFrame, u_pred: pd.DataFrame, i: int) -> None:
+    """ Validate the prediction accuracy of the PINN
+
+    :param full_df: Full training dataset
+    :type full_df: pd.DataFrame
+    :param u_pred: Predictions of the PINN 
+    :type u_pred: pd.DataFrame
+    :param i: Number of training data points used for training
+    :type i: int
+    """
+    print('************************************************************************')
+    print('************************************************************************')
+    
+    full_df['Biomass_pred'] = u_pred['Biomass'].values
+    full_df['Glucose_pred'] = u_pred['Glucose'].values
+    try:
+        next_biomass = full_df['Biomass'].iloc[i]
+        next_glucose = full_df['Glucose'].iloc[i]
+        pred_biomass = full_df['Biomass_pred'].iloc[i]
+        pred_glucose = full_df['Glucose_pred'].iloc[i]
+        print(f'Biomass error: {abs(next_biomass - pred_biomass):.4f}')
+        print(f'Glucose error: {abs(next_glucose - pred_glucose):.4f}')
+        print(f'Real Biomass: {next_biomass:.4f} || Predicted Biomass: {pred_biomass:.4f}')
+        print(f'Real Glucose: {next_glucose:.4f} || Predicted Glucose: {pred_glucose:.4f}')  
+    except IndexError:
+        pass
+    biomass_mse = mean_squared_error(full_df['Biomass'], full_df['Biomass_pred'])
+    glucose_mse = mean_squared_error(full_df['Glucose'], full_df['Glucose_pred'])
+    print(f'Biomass MSE: {biomass_mse:.4f}')
+    print(f'Glucose MSE: {glucose_mse:.4f}')
