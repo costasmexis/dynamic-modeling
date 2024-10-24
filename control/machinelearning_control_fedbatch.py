@@ -9,8 +9,6 @@ import torch
 import torch.nn as nn
 import copy
 
-from system_ode_fedbatch import get_volume
-
 NUM_EPOCHS = 30000
 LEARNING_RATE = 1e-4
 NUM_COLLOCATION = 5000
@@ -22,8 +20,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def generate_dataset(
-    data: pd.DataFrame, num_points: int
-) -> Union[torch.Tensor, torch.Tensor]:
+    data: pd.DataFrame, num_points: int, F_min: float = 0.010, F_max: float = 0.070) -> Union[torch.Tensor, torch.Tensor]:
     """Generate dataset of random multiple initial conditions and control actions"""
 
     df = pd.DataFrame(columns=["t", "Biomass", "Glucose"])
@@ -33,7 +30,12 @@ def generate_dataset(
     df["Glucose"] = np.random.uniform(
         data["Glucose"].min(), data["Glucose"].max(), num_points
     )
-    df["F"] = np.random.uniform(0.015, 0.065, num_points)
+    df["V"] = np.random.uniform(
+        data["V"].min(), data["V"].max(), num_points
+    )
+    df["F"] = np.random.uniform(
+        F_min, F_max, num_points
+    )
     df["t"] = 0.0
 
     print(f"Dataset shape: {df.shape}")
@@ -41,10 +43,11 @@ def generate_dataset(
     t_train = numpy_to_tensor(df["t"].values)
     X_train = numpy_to_tensor(df["Biomass"].values)
     S_train = numpy_to_tensor(df["Glucose"].values)
+    V_train = numpy_to_tensor(df["V"].values)
     F_train = numpy_to_tensor(df["F"].values)
 
-    in_train = torch.cat([t_train, X_train, S_train, F_train], dim=1)
-    out_train = torch.cat([X_train, S_train], dim=1)
+    in_train = torch.cat([t_train, X_train, S_train, V_train, F_train], dim=1)
+    out_train = torch.cat([X_train, S_train, V_train], dim=1)
     return in_train, out_train
 
 
@@ -98,25 +101,32 @@ def loss_fn(
     S0_col = numpy_to_tensor(
         np.random.uniform(data["Glucose"].min(), data["Glucose"].max(), NUM_COLLOCATION)
     )
+    V0_col = numpy_to_tensor(
+        np.random.uniform(data["V"].min(), data["V"].max(), NUM_COLLOCATION)
+    )
     F_col = numpy_to_tensor(np.random.uniform(0.015, 0.065, NUM_COLLOCATION))
-    V_col = numpy_to_tensor([get_volume(t) for t in t_col])
+    # V_col = numpy_to_tensor([get_volume(t) for t in t_col])
+    
 
-    u_col = torch.cat([t_col, X0_col, S0_col, F_col], dim=1)
+    u_col = torch.cat([t_col, X0_col, S0_col, V0_col, F_col], dim=1)
 
     preds = net.forward(u_col)
 
     X_pred = preds[:, 0].view(-1, 1)
     S_pred = preds[:, 1].view(-1, 1)
+    V_pred = preds[:, 2].view(-1, 1)
 
     dXdt_pred = grad(X_pred, t_col)[0]
     dSdt_pred = grad(S_pred, t_col)[0]
+    dVdt_pred = grad(V_pred, t_col)[0]
 
     mu = mu_max * S_pred / (K_s + S_pred)
 
-    error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V_col
-    error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V_col * (Sin - S_pred)
-
-    error_ode = 0.5 * torch.mean(error_dXdt**2) + 0.5 * torch.mean(error_dSdt**2)
+    error_dXdt = dXdt_pred - mu * X_pred + X_pred * F_col / V0_col
+    error_dSdt = dSdt_pred + mu * X_pred / Y_xs - F_col / V0_col * (Sin - S_pred)
+    error_dVdt = dVdt_pred - F_col
+    
+    error_ode = 1/3 * torch.mean(error_dXdt**2) + 1/3 * torch.mean(error_dSdt**2) + 1/3 * torch.mean(error_dVdt**2)
 
     return error_ode
 
@@ -133,7 +143,7 @@ def main(
     Yxs: float,
     verbose: int = 100,
 ):
-    net = PINN(4, 2).to(DEVICE)
+    net = PINN(input_dim=5, output_dim=3).to(DEVICE)
     optimizer = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2500, gamma=0.7)
 
@@ -151,9 +161,11 @@ def main(
         preds = net.forward(in_train)
         X_pred = preds[:, 0].view(-1, 1)
         S_pred = preds[:, 1].view(-1, 1)
+        V_pred = preds[:, 2].view(-1, 1)
         loss_X = nn.MSELoss()(X_pred, out_train[:, 0].view(-1, 1))
         loss_S = nn.MSELoss()(S_pred, out_train[:, 1].view(-1, 1))
-        loss_data = 0.5 * (loss_X + loss_S)
+        loss_V = nn.MSELoss()(V_pred, out_train[:, 2].view(-1, 1))
+        loss_data = 0.33 * (loss_X + loss_S + loss_V)
 
         loss_ode = loss_fn(net, data, t_start, t_end, S_in, mu_max, Ks, Yxs)
 
