@@ -2,16 +2,11 @@ import sys
 
 sys.path.append("../")
 
-import os
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 from machinelearning_control_fedbatch import generate_dataset, main
-from system_ode_fedbatch import generate_data
-
-from src.utils import get_data_and_feed, plot_experiment
+from src.utils import get_data_and_feed
 
 FILENAME = '../data/data_processed.xlsx'
 EXPERIMENT = 'BR01'
@@ -47,9 +42,9 @@ print(f"Dataset shape: {full_df.shape}")
 in_train, out_train = generate_dataset(data=full_df, num_points=1000)
 
 # parameter values
-mumax = 0.6710     # 1/hour
-Ks = 0.3086          # g/liter
-Yxs = 0.5624         # g/g
+mumax = 0.7267     # 1/hour
+Ks = 0.1634          # g/liter
+Yxs = 0.3983         # g/g
 Sin = 1.43 * 200  # g/liter
 
 t_start = full_df['RTime'].iloc[0]
