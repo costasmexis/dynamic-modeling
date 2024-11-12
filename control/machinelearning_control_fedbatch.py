@@ -20,23 +20,27 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def generate_dataset(
-    data: pd.DataFrame, num_points: int, F_min: float = 0.010, F_max: float = 0.070) -> Union[torch.Tensor, torch.Tensor]:
+    data: pd.DataFrame, num_points: int, F_min: float = 0.010, F_max: float = 0.070, default: bool = False) -> Union[torch.Tensor, torch.Tensor]:
     """Generate dataset of random multiple initial conditions and control actions"""
-
     df = pd.DataFrame(columns=["t", "Biomass", "Glucose"])
-    df["Biomass"] = np.random.uniform(
-        data["Biomass"].min(), data["Biomass"].max(), num_points
-    )
-    df["Glucose"] = np.random.uniform(
-        data["Glucose"].min(), data["Glucose"].max(), num_points
-    )
-    df["V"] = np.random.uniform(
-        data["V"].min(), data["V"].max(), num_points
-    )
-    df["F"] = np.random.uniform(
-        F_min, F_max, num_points
-    )
-    df["t"] = 0.0
+    
+    if default:    
+        df["Biomass"] = np.random.uniform(
+            data["Biomass"].min(), data["Biomass"].max(), num_points
+        )
+        df["Glucose"] = np.random.uniform(
+            data["Glucose"].min(), data["Glucose"].max(), num_points
+        )
+        df["V"] = np.random.uniform(
+            data["V"].min(), data["V"].max(), num_points
+        )
+        df["t"] = 0.0
+    else:    
+        df['Biomass'] = np.random.uniform(4, 20, num_points)
+        df['Glucose'] = np.random.uniform(0, 0.05, num_points)
+        df['V'] = np.random.uniform(1.5, 2, num_points)
+        df["F"] = np.random.uniform(F_min, F_max, num_points)
+        df["t"] = 0.0
 
     print(f"Dataset shape: {df.shape}")
 
@@ -95,19 +99,11 @@ def loss_fn(
 ) -> torch.Tensor:
     
     t_col = numpy_to_tensor(np.random.uniform(t_start, t_end, NUM_COLLOCATION))
-    X0_col = numpy_to_tensor(
-        np.random.uniform(data["Biomass"].min(), data["Biomass"].max(), NUM_COLLOCATION)
-    )
-    S0_col = numpy_to_tensor(
-        np.random.uniform(data["Glucose"].min(), data["Glucose"].max(), NUM_COLLOCATION)
-    )
-    V0_col = numpy_to_tensor(
-        np.random.uniform(data["V"].min(), data["V"].max(), NUM_COLLOCATION)
-    )
+    X0_col = numpy_to_tensor(np.random.uniform(data["Biomass"].min(), data["Biomass"].max(), NUM_COLLOCATION))
+    S0_col = numpy_to_tensor(np.random.uniform(data["Glucose"].min(), data["Glucose"].max(), NUM_COLLOCATION))
+    V0_col = numpy_to_tensor(np.random.uniform(data["V"].min(), data["V"].max(), NUM_COLLOCATION))
     F_col = numpy_to_tensor(np.random.uniform(0.015, 0.065, NUM_COLLOCATION))
-    # V_col = numpy_to_tensor([get_volume(t) for t in t_col])
     
-
     u_col = torch.cat([t_col, X0_col, S0_col, V0_col, F_col], dim=1)
 
     preds = net.forward(u_col)

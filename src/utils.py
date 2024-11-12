@@ -63,6 +63,7 @@ def plot_experiment(df: pd.DataFrame, title: str) -> None:
     plt.ylabel("Concentration (g/L)")
     plt.title(title)
     plt.legend()
+    plt.xticks(np.arange(0, df["RTime"].max() + 0.5, 0.5))
     plt.show()
 
 
