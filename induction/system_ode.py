@@ -30,17 +30,17 @@ def Volume(t):
 #     return F0
 
 # inlet flowrate
-def Fs(t, T_FB=4.73):
-    if t <= 4.73 - T_FB:
-        return 0.017
-    elif t <= 7.33 - T_FB:
-        return 0.031
-    elif t <= 9.17 - T_FB:
+def Fs(t):
+    if t <= 0:
+        return 0.03
+    elif t <= 4:
+        return 0.05
+    elif t <= 6:
         return 0.060
-    elif t <= 9.78 - T_FB:
-        return 0.031
+    elif t <= 8:
+        return 0.030
     else:
-        return 0.017
+        return 0.020
 
 
 def mu(S, mumax, Ks):
@@ -50,7 +50,7 @@ def Rg(X, S, mumax, Ks):
     return mu(S, mumax, Ks) * X
 
 def a(t, alpha):
-    return alpha
+    return alpha * (1 - np.exp(-t**2))
 
 def simulate(
     mumax: float = MU_MAX,
@@ -82,7 +82,7 @@ def GetDataset(
     alpha: float = ALPHA,
     Sin: float = S_IN,
 
-):
+) -> pd.DataFrame:
     X, S, P, V = simulate(mumax, Ks, Yxs, alpha, Sin)
     df = pd.DataFrame(
         {"RTime": t_sim, "Biomass": X, "Glucose": S, "Protein": P, "V": V}
@@ -91,21 +91,28 @@ def GetDataset(
 
 
 # Plot solution
-def PlotSolution(df: pd.DataFrame):
-    plt.figure(figsize=(12, 4))
-    plt.scatter(df['RTime'], df['Biomass'], label="Biomass", s=10, alpha=1)
-    plt.scatter(df['RTime'], df['Glucose'], label="Glucose", s=10, alpha=1)
-    plt.scatter(df['RTime'], df['Protein'], label="Protein", s=10, alpha=1)
-    plt.plot(df['RTime'], df['Biomass'], label="_Biomass", alpha=0.2)
-    plt.plot(df['RTime'], df['Glucose'], label="_Glucose", alpha=0.2)
-    plt.plot(df['RTime'], df['Protein'], label="_Protein", alpha=0.2)
-    plt.xlabel("Time (hours)")
-    plt.ylabel("Concentration (g/lt)")
-    plt.legend(loc="best")
+def PlotSolution(df: pd.DataFrame) -> None:
+    fig, axs = plt.subplots(2, 1, figsize=(12, 4), sharex=True)
+    
+    # Plot Biomass and Glucose in WWthe first subplot
+    axs[0].scatter(df['RTime'], df['Biomass'], label="Biomass", s=10, alpha=1)
+    axs[0].scatter(df['RTime'], df['Glucose'], label="Glucose", s=10, alpha=1)
+    axs[0].plot(df['RTime'], df['Biomass'], label="_Biomass", alpha=0.2)
+    axs[0].plot(df['RTime'], df['Glucose'], label="_Glucose", alpha=0.2)
+    axs[0].set_ylabel("Concentration (g/lt)")
+    axs[0].legend(loc="best")
+    
+    # Plot Protein in the second subplot
+    axs[1].scatter(df['RTime'], df['Protein'], label="Protein", s=10, alpha=1)
+    axs[1].plot(df['RTime'], df['Protein'], label="_Protein", alpha=0.2)
+    axs[1].set_xlabel("Time (hours)")
+    axs[1].set_ylabel("Concentration (g/lt)")
+    axs[1].legend(loc="best")
+    
     plt.show()
 
 # Plot predictions vs actual
-def PlotPredictions(train_df: pd.DataFrame, df_pred: pd.DataFrame):
+def PlotPredictions(train_df: pd.DataFrame, df_pred: pd.DataFrame) -> None:
     plt.figure(figsize=(12, 4))
     plt.scatter(train_df['RTime'], train_df['Biomass'], label="Biomass", s=50, alpha=0.3)
     plt.scatter(train_df['RTime'], train_df['Glucose'], label="Glucose", s=50, alpha=0.3)

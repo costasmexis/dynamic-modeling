@@ -17,10 +17,10 @@ torch.manual_seed(SEED)
 
 # Parameter values
 LEARNING_RATE = 1e-3
-NUM_COLLOCATION = 25
+NUM_COLLOCATION = 50
 PATIENCE = 1000
 THRESHOLD = 1e-3
-EARLY_STOPPING_EPOCH = 1
+EARLY_STOPPING_EPOCH = 10000
 
 def numpy_to_tensor(array):
     return (
@@ -43,24 +43,25 @@ class PINN(nn.Module):
     ):
         super(PINN, self).__init__()
         self.input = nn.Linear(input_dim, 64)
-        self.fc1 = nn.Linear(64, 128)
-        self.hidden1 = nn.Linear(128, 256)
+        self.fc1 = nn.Linear(64, 256)
+        self.hidden1 = nn.Linear(256, 256)
         self._hidden = nn.Linear(256, 256)
-        self.hidden2 = nn.Linear(256, 128)
-        self.fc2 = nn.Linear(128, 32)
+        self.hidden2 = nn.Linear(256, 256)
+        self.fc2 = nn.Linear(256, 32)
         self.output = nn.Linear(32, output_dim)
 
         # Kinetic parameters
-        self.mu_max = nn.Parameter(torch.tensor([0.5]))
+        # self.mu_max = nn.Parameter(torch.tensor([0.5]))
+        self.mu_max = torch.tensor([0.75], device=DEVICE)
         self.alpha = nn.Parameter(torch.tensor([0.5]))
 
     def forward(self, x):
-        x = nn.functional.gelu(self.input(x))
-        x = nn.functional.gelu(self.fc1(x))
-        x = nn.functional.gelu(self.hidden1(x))
-        x = nn.functional.gelu(self._hidden(x))
-        x = nn.functional.gelu(self.hidden2(x))
-        x = nn.functional.gelu(self.fc2(x))
+        x = nn.functional.relu(self.input(x))
+        x = nn.functional.relu(self.fc1(x))
+        # x = nn.functional.relu(self.hidden1(x))
+        # x = nn.functional.relu(self._hidden(x))
+        # x = nn.functional.relu(self.hidden2(x))
+        x = nn.functional.relu(self.fc2(x))
         x = self.output(x)
         return x
 
@@ -100,7 +101,7 @@ def loss_fn(
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred - X_pred * F / V)
     error_dSdt = nn.MSELoss()(dSdt_pred, -mu * X_pred / Y_XS + F / V * (S_IN - S_pred))
-    error_dPdt = nn.MSELoss()(dPdt_pred, net.alpha * mu * X_pred - P_pred * F / V)
+    error_dPdt = nn.MSELoss()(dPdt_pred, net.alpha * (1-torch.exp(-t**2)) * mu * X_pred - P_pred * F / V)
 
     error_ode = error_dXdt + error_dSdt + error_dPdt
 
