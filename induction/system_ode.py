@@ -4,21 +4,21 @@ from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 
 # Define parameters
-T_START, T_END = 0, 20
+T_START, T_END = 0, 12
 NUM_SAMPLES = 25
 
 # Simulation time points
 t_sim = np.linspace(T_START, T_END, NUM_SAMPLES)
 
 # Kinetic parameters
-MU_MAX = 0.87  # 1/hour
+MU_MAX = 0.75  # 1/hour
 K_S = 0.20  # g/liter
-Y_XS = 0.41  # g/g
-S_IN = 10.0  # g/liter
+Y_XS = 0.40  # g/g
+S_IN = 1.43 * 200
 ALPHA = 0.30
 
 # Initial conditions
-X0, S0, P0, V0 = 0.05, 10.0, 0.0, 1.0
+X0, S0, P0, V0 = 4.163095, 0.013, 0.0, 1.55
 F0 = 0.05  # Constant feed rate (liter/hour)
 IC = [X0, S0, P0, V0]
 
@@ -26,8 +26,22 @@ IC = [X0, S0, P0, V0]
 def Volume(t):
     return V0 + F0*t
 
-def Fs(t):
-    return F0
+# def Fs(t):
+#     return F0
+
+# inlet flowrate
+def Fs(t, T_FB=4.73):
+    if t <= 4.73 - T_FB:
+        return 0.017
+    elif t <= 7.33 - T_FB:
+        return 0.031
+    elif t <= 9.17 - T_FB:
+        return 0.060
+    elif t <= 9.78 - T_FB:
+        return 0.031
+    else:
+        return 0.017
+
 
 def mu(S, mumax, Ks):
     return mumax * S / (Ks + S)
