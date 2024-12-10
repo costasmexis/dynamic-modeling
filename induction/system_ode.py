@@ -42,15 +42,25 @@ def Fs(t):
     else:
         return 0.020
 
-
 def mu(S, mumax, Ks):
     return mumax * S / (Ks + S)
 
 def Rg(X, S, mumax, Ks):
     return mu(S, mumax, Ks) * X
 
-def a(t, alpha):
-    return alpha * (1 - np.exp(-t**2))
+def a(t, alpha: list):
+    '''
+    - Sigmoidal Increase: a(t) = a_max * 1 / (1 + exp(-k(t-t0))
+    - Exponentially Decaying: a(t) = a_0 exp(-k t)
+    - Periodic fluctuation: a(t) = a_0 + a_1 sin(ωt + φ)
+    - Linearly Decreasing: a(t) = a_0 - k t
+    '''
+    if t < 4:
+        return alpha[0] * 1 / (1 + np.exp(-t))
+    elif t < 10:
+        return alpha[0] * np.exp(-t) 
+    else:
+        return alpha[1] - alpha[2] * t
 
 def simulate(
     mumax: float = MU_MAX,
@@ -81,12 +91,18 @@ def GetDataset(
     Yxs: float = Y_XS,
     alpha: float = ALPHA,
     Sin: float = S_IN,
+    noise: bool = False,
 
 ) -> pd.DataFrame:
     X, S, P, V = simulate(mumax, Ks, Yxs, alpha, Sin)
     df = pd.DataFrame(
         {"RTime": t_sim, "Biomass": X, "Glucose": S, "Protein": P, "V": V}
     )
+    if noise:
+        # Add noise to the dataset
+        df["Biomass"] += np.random.normal(0, 0.1, NUM_SAMPLES)
+        df["Glucose"] += np.random.normal(0, 0.1, NUM_SAMPLES)
+        df["Protein"] += np.random.normal(0, 0.01, NUM_SAMPLES)
     return df
 
 

@@ -98,10 +98,17 @@ def loss_fn(
     dPdt_pred = grad(P_pred, t)[0]
 
     mu = net.mu_max * S_pred / (K_S + S_pred)
+    
+    # Model A
+    # alpha = net.alpha * 1 / (1 + torch.exp(-t)) 
+    # Model B
+    # alpha = net.alpha * 1 / (1 + torch.exp(-t)) 
+    # Model C
+    alpha = net.alpha * torch.exp(-t)
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred - X_pred * F / V)
     error_dSdt = nn.MSELoss()(dSdt_pred, -mu * X_pred / Y_XS + F / V * (S_IN - S_pred))
-    error_dPdt = nn.MSELoss()(dPdt_pred, net.alpha * (1-torch.exp(-t**2)) * mu * X_pred - P_pred * F / V)
+    error_dPdt = nn.MSELoss()(dPdt_pred, alpha * mu * X_pred - P_pred * F / V)
 
     error_ode = error_dXdt + error_dSdt + error_dPdt
 
