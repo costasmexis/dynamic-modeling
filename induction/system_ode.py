@@ -19,15 +19,7 @@ ALPHA = 0.30
 
 # Initial conditions
 X0, S0, P0, V0 = 4.163095, 0.013, 0.0, 1.55
-F0 = 0.05  # Constant feed rate (liter/hour)
 IC = [X0, S0, P0, V0]
-
-# Function to calculate volume
-def Volume(t):
-    return V0 + F0*t
-
-# def Fs(t):
-#     return F0
 
 # inlet flowrate
 def Fs(t):
@@ -41,6 +33,9 @@ def Fs(t):
         return 0.030
     else:
         return 0.020
+
+def Volume(t):
+    return V0 + Fs(t) * t
 
 def mu(S, mumax, Ks):
     return mumax * S / (Ks + S)
@@ -108,7 +103,7 @@ def GetDataset(
 
 # Plot solution
 def PlotSolution(df: pd.DataFrame) -> None:
-    fig, axs = plt.subplots(2, 1, figsize=(12, 4), sharex=True)
+    fig, axs = plt.subplots(3, 1, figsize=(12, 6), sharex=True)
     
     # Plot Biomass and Glucose in WWthe first subplot
     axs[0].scatter(df['RTime'], df['Biomass'], label="Biomass", s=10, alpha=1)
@@ -124,6 +119,13 @@ def PlotSolution(df: pd.DataFrame) -> None:
     axs[1].set_xlabel("Time (hours)")
     axs[1].set_ylabel("Concentration (g/lt)")
     axs[1].legend(loc="best")
+    
+    # Plot Volume in the third subplot
+    axs[2].scatter(df['RTime'], df['V'], label="Volume", s=10, alpha=1)
+    axs[2].plot(df['RTime'], df['V'], label="_Volume", alpha=0.2)
+    axs[2].set_xlabel("Time (hours)")
+    axs[2].set_ylabel("Volume")
+    axs[2].legend(loc="best")
     
     plt.show()
 

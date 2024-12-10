@@ -18,9 +18,10 @@ torch.manual_seed(SEED)
 # Parameter values
 LEARNING_RATE = 1e-3
 NUM_COLLOCATION = 50
-PATIENCE = 1000
+PATIENCE = 100
 THRESHOLD = 1e-3
-EARLY_STOPPING_EPOCH = 10000
+EARLY_STOPPING_EPOCH = 1000
+
 
 def numpy_to_tensor(array):
     return (
@@ -35,6 +36,7 @@ def grad(outputs, inputs):
         outputs, inputs, grad_outputs=torch.ones_like(outputs), create_graph=True
     )
 
+
 class PINN(nn.Module):
     def __init__(
         self,
@@ -47,28 +49,31 @@ class PINN(nn.Module):
         self.hidden1 = nn.Linear(256, 256)
         self._hidden = nn.Linear(256, 256)
         self.hidden2 = nn.Linear(256, 256)
-        self.fc2 = nn.Linear(256, 32)
-        self.output = nn.Linear(32, output_dim)
+        self.fc2 = nn.Linear(256, 64)
+        self.output = nn.Linear(64, output_dim)
 
         # Kinetic parameters
         # self.mu_max = nn.Parameter(torch.tensor([0.5]))
         self.mu_max = torch.tensor([0.75], device=DEVICE)
         self.alpha = nn.Parameter(torch.tensor([0.5]))
+        self.beta = nn.Parameter(torch.tensor([0.5]))
 
     def forward(self, x):
-        x = nn.functional.relu(self.input(x))
+        x = nn.functional.tanh(self.input(x))
         x = nn.functional.relu(self.fc1(x))
         # x = nn.functional.relu(self.hidden1(x))
         # x = nn.functional.relu(self._hidden(x))
         # x = nn.functional.relu(self.hidden2(x))
-        x = nn.functional.relu(self.fc2(x))
+        x = nn.functional.tanh(self.fc2(x))
         x = self.output(x)
         return x
+
 
 def loss_fn(
     net: torch.nn.Module,
     t_start: Union[np.float32, torch.Tensor] = T_START,
     t_end: Union[np.float32, torch.Tensor] = T_END,
+    model: str = "A",
 ) -> torch.Tensor:
     if isinstance(t_start, torch.Tensor):
         t_start = t_start.item()
@@ -85,6 +90,7 @@ def loss_fn(
         .requires_grad_(True)
         .to(DEVICE)
     )
+    
     F = torch.tensor([Fs(i) for i in t], dtype=torch.float32).view(-1, 1).to(DEVICE)
     V = torch.tensor([Volume(i) for i in t], dtype=torch.float32).view(-1, 1).to(DEVICE)
 
@@ -98,13 +104,16 @@ def loss_fn(
     dPdt_pred = grad(P_pred, t)[0]
 
     mu = net.mu_max * S_pred / (K_S + S_pred)
-    
-    # Model A
-    # alpha = net.alpha * 1 / (1 + torch.exp(-t)) 
-    # Model B
-    # alpha = net.alpha * 1 / (1 + torch.exp(-t)) 
-    # Model C
-    alpha = net.alpha * torch.exp(-t)
+
+    # Model selection for alpha: a=a(t)
+    if model == "A":
+        alpha = net.alpha * 1 / (1 + torch.exp(-t))
+    elif model == "B":
+        alpha = net.alpha * torch.exp(-t)
+    elif model == "C":
+        alpha = net.alpha - net.beta * t
+    else:
+        raise ValueError("Model not found!")
 
     error_dXdt = nn.MSELoss()(dXdt_pred, mu * X_pred - X_pred * F / V)
     error_dSdt = nn.MSELoss()(dSdt_pred, -mu * X_pred / Y_XS + F / V * (S_IN - S_pred))
@@ -115,7 +124,11 @@ def loss_fn(
     return error_ode
 
 
-def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000):
+def main(train_df: pd.DataFrame,
+         full_df: pd.DataFrame,
+         num_epochs: int = 10000,
+         model: str = "A") -> tuple:
+    
     t_train = numpy_to_tensor(train_df["RTime"].values)
     X_train = numpy_to_tensor(train_df["Biomass"].values)
     S_train = numpy_to_tensor(train_df["Glucose"].values)
@@ -142,7 +155,7 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
         u_pred = net.forward(t_train)
 
         loss_data = nn.MSELoss()(u_pred, u_train) * w_data
-        loss_ode = loss_fn(net, T_START, T_END) * w_ode
+        loss_ode = loss_fn(net, T_START, T_END, model) * w_ode
         loss_ic = nn.MSELoss()(u_pred[0, :], u_train[0, :]) * w_ic
 
         loss = loss_data + loss_ode + loss_ic
@@ -151,10 +164,8 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
         scheduler.step()
 
         if epoch % 100 == 0:
-            print(
-                f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}, Loss Data: {loss_data.item():.4f}, Loss ODE: {loss_ode.item():.4f}, Loss IC: {loss_ic.item():.4f}"
-            )
-            print(f"mu_max: {net.mu_max.item():.2f}, alpha: {net.alpha.item():.2f}")
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.2f}, Loss Data: {loss_data.item():.2f}, Loss ODE: {loss_ode.item():.2f}")
+            print(f"mu_max: {net.mu_max.item():.2f}, alpha: {net.alpha.item():.2f}, beta: {net.beta.item():.2f}")   
 
         if epoch >= EARLY_STOPPING_EPOCH:
             if loss < best_loss - threshold:
@@ -178,7 +189,7 @@ def main(train_df: pd.DataFrame, full_df: pd.DataFrame, num_epochs: int = 10000)
 
 def plot_net_predictions(
     full_df: pd.DataFrame, train_df: pd.DataFrame, u_pred: pd.DataFrame
-):
+) -> None:
     _, ax = plt.subplots(1, 2, figsize=(12, 3))
     ax[0].scatter(
         full_df["RTime"],
