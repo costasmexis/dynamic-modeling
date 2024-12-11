@@ -96,8 +96,15 @@ def GetDataset(
     if noise:
         # Add noise to the dataset
         df["Biomass"] += np.random.normal(0, 0.1, NUM_SAMPLES)
-        df["Glucose"] += np.random.normal(0, 0.1, NUM_SAMPLES)
+        df["Glucose"] += np.random.normal(0, 0.01, NUM_SAMPLES)
         df["Protein"] += np.random.normal(0, 0.01, NUM_SAMPLES)
+        df["V"] += np.random.normal(0, 0.01, NUM_SAMPLES)
+
+    df.loc[df["Biomass"] < 0, "Biomass"] = np.random.uniform(0, 0.05)
+    df.loc[df["Glucose"] < 0, "Glucose"] = np.random.uniform(0, 0.05)
+    df.loc[df["Protein"] < 0, "Protein"] = np.random.uniform(0, 0.05)
+    df.loc[df["V"] < 0, "V"] = 0
+
     return df
 
 
@@ -111,21 +118,21 @@ def PlotSolution(df: pd.DataFrame) -> None:
     axs[0].plot(df['RTime'], df['Biomass'], label="_Biomass", alpha=0.2)
     axs[0].plot(df['RTime'], df['Glucose'], label="_Glucose", alpha=0.2)
     axs[0].set_ylabel("Concentration (g/lt)")
-    axs[0].legend(loc="best")
+    axs[0].legend(loc="upper left")
     
     # Plot Protein in the second subplot
-    axs[1].scatter(df['RTime'], df['Protein'], label="Protein", s=10, alpha=1)
-    axs[1].plot(df['RTime'], df['Protein'], label="_Protein", alpha=0.2)
+    axs[1].scatter(df['RTime'], df['Protein'], label="Protein", color='green', s=10, alpha=1)
+    axs[1].plot(df['RTime'], df['Protein'], label="_Protein", color='green', alpha=0.2)
     axs[1].set_xlabel("Time (hours)")
     axs[1].set_ylabel("Concentration (g/lt)")
-    axs[1].legend(loc="best")
+    axs[1].legend(loc="upper left")
     
     # Plot Volume in the third subplot
-    axs[2].scatter(df['RTime'], df['V'], label="Volume", s=10, alpha=1)
-    axs[2].plot(df['RTime'], df['V'], label="_Volume", alpha=0.2)
+    axs[2].scatter(df['RTime'], df['V'], label="Volume", color='black', s=10, alpha=1)
+    axs[2].plot(df['RTime'], df['V'], label="_Volume", color='black', alpha=0.2)
     axs[2].set_xlabel("Time (hours)")
     axs[2].set_ylabel("Volume")
-    axs[2].legend(loc="best")
+    axs[2].legend(loc="upper left")
     
     plt.show()
 
