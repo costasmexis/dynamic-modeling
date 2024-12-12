@@ -1,10 +1,10 @@
 Model A
  * mu_max = 0.7500
- * alpha = 0.0873
+ * alpha = 0.3234
 Model B
  * mu_max = 0.7500
- * alpha = 0.4792
+ * alpha = 0.0670
 Model C
  * mu_max = 0.7500
- * alpha = 0.4764
- * beta = 0.2009
+ * alpha = 0.5781
+ * beta = 0.4191
