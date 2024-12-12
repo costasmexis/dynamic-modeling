@@ -95,10 +95,10 @@ def GetDataset(
     )
     if noise:
         # Add noise to the dataset
-        df["Biomass"] += np.random.normal(0, 0.1, NUM_SAMPLES)
+        df["Biomass"] += np.random.normal(0, 0.2, NUM_SAMPLES)
         df["Glucose"] += np.random.normal(0, 0.01, NUM_SAMPLES)
-        df["Protein"] += np.random.normal(0, 0.01, NUM_SAMPLES)
-        df["V"] += np.random.normal(0, 0.01, NUM_SAMPLES)
+        df["Protein"] += np.random.normal(0, 0.05, NUM_SAMPLES)
+        # df["V"] += np.random.normal(0, 0.01, NUM_SAMPLES)
 
     df.loc[df["Biomass"] < 0, "Biomass"] = np.random.uniform(0, 0.05)
     df.loc[df["Glucose"] < 0, "Glucose"] = np.random.uniform(0, 0.05)

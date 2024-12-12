@@ -17,7 +17,7 @@ torch.manual_seed(SEED)
 
 # Parameter values
 LEARNING_RATE = 1e-3
-NUM_COLLOCATION = 50
+NUM_COLLOCATION = 100
 PATIENCE = 100
 THRESHOLD = 1e-3
 EARLY_STOPPING_EPOCH = 1000
@@ -59,12 +59,12 @@ class PINN(nn.Module):
         self.beta = nn.Parameter(torch.tensor([0.5]))
 
     def forward(self, x):
-        x = nn.functional.tanh(self.input(x))
+        x = nn.functional.relu(self.input(x))
         x = nn.functional.relu(self.fc1(x))
         # x = nn.functional.relu(self.hidden1(x))
         # x = nn.functional.relu(self._hidden(x))
         # x = nn.functional.relu(self.hidden2(x))
-        x = nn.functional.tanh(self.fc2(x))
+        x = nn.functional.relu(self.fc2(x))
         x = self.output(x)
         return x
 
