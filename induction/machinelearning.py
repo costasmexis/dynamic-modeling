@@ -17,32 +17,20 @@ torch.manual_seed(SEED)
 
 # Parameter values
 LEARNING_RATE = 1e-3
-NUM_COLLOCATION = 100
+NUM_COLLOCATION = 50
 PATIENCE = 100
 THRESHOLD = 1e-3
 EARLY_STOPPING_EPOCH = 1000
 
 
 def numpy_to_tensor(array):
-    return (
-        torch.tensor(array, requires_grad=True, dtype=torch.float32)
-        .to(DEVICE)
-        .reshape(-1, 1)
-    )
-
+    return torch.tensor(array, requires_grad=True, dtype=torch.float32).to(DEVICE).reshape(-1, 1)
 
 def grad(outputs, inputs):
-    return torch.autograd.grad(
-        outputs, inputs, grad_outputs=torch.ones_like(outputs), create_graph=True
-    )
-
+    return torch.autograd.grad(outputs, inputs, grad_outputs=torch.ones_like(outputs), create_graph=True)
 
 class PINN(nn.Module):
-    def __init__(
-        self,
-        input_dim: int,
-        output_dim: int,
-    ):
+    def __init__(self, input_dim: int, output_dim: int):
         super(PINN, self).__init__()
         self.input = nn.Linear(input_dim, 64)
         self.fc1 = nn.Linear(64, 256)
@@ -53,8 +41,8 @@ class PINN(nn.Module):
         self.output = nn.Linear(64, output_dim)
 
         # Kinetic parameters
-        # self.mu_max = nn.Parameter(torch.tensor([0.5]))
-        self.mu_max = torch.tensor([0.75], device=DEVICE)
+        self.mu_max = nn.Parameter(torch.tensor([0.5]))
+        # self.mu_max = torch.tensor([0.75], device=DEVICE)
         self.alpha = nn.Parameter(torch.tensor([0.5]))
         self.beta = nn.Parameter(torch.tensor([0.5]))
 
@@ -62,7 +50,7 @@ class PINN(nn.Module):
         x = nn.functional.relu(self.input(x))
         x = nn.functional.relu(self.fc1(x))
         # x = nn.functional.relu(self.hidden1(x))
-        # x = nn.functional.relu(self._hidden(x))
+        x = nn.functional.relu(self._hidden(x))
         # x = nn.functional.relu(self.hidden2(x))
         x = nn.functional.relu(self.fc2(x))
         x = self.output(x)
@@ -120,6 +108,7 @@ def loss_fn(
     error_dPdt = nn.MSELoss()(dPdt_pred, alpha * mu * X_pred - P_pred * F / V)
 
     error_ode = error_dXdt + error_dSdt + error_dPdt
+    error_ode = 1/3 * error_ode # Take the average of the errors
 
     return error_ode
 
@@ -153,19 +142,22 @@ def main(train_df: pd.DataFrame,
     for epoch in range(num_epochs):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
-
+        
         loss_data = nn.MSELoss()(u_pred, u_train) * w_data
-        loss_ode = loss_fn(net, T_START, T_END, model) * w_ode
         loss_ic = nn.MSELoss()(u_pred[0, :], u_train[0, :]) * w_ic
+        loss_ode = loss_fn(net, T_START, T_END, model) * w_ode
 
-        loss = loss_data + loss_ode + loss_ic
+        # loss = loss_data + loss_ode + loss_ic
+        
+        loss = 1/2 * (loss_data + loss_ode) 
+        
         loss.backward()
         optimizer.step()
         scheduler.step()
 
         if epoch % 100 == 0:
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.2f}, Loss Data: {loss_data.item():.2f}, Loss ODE: {loss_ode.item():.2f}")
-            print(f"mu_max: {net.mu_max.item():.2f}, alpha: {net.alpha.item():.2f}, beta: {net.beta.item():.2f}")   
+            print(f" *** mu_max: {net.mu_max.item():.2f}, alpha: {net.alpha.item():.2f}, beta: {net.beta.item():.2f}")   
 
         if epoch >= EARLY_STOPPING_EPOCH:
             if loss < best_loss - threshold:

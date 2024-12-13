@@ -3,6 +3,8 @@ import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 
+np.random.seed(0)
+
 # Define parameters
 T_START, T_END = 0, 12
 NUM_SAMPLES = 25
@@ -94,6 +96,8 @@ def GetDataset(
         {"RTime": t_sim, "Biomass": X, "Glucose": S, "Protein": P, "V": V}
     )
     if noise:
+        # Make the noise reproducible
+        np.random.seed(0)
         # Add noise to the dataset
         df["Biomass"] += np.random.normal(0, 0.2, NUM_SAMPLES)
         df["Glucose"] += np.random.normal(0, 0.01, NUM_SAMPLES)
