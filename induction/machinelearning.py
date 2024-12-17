@@ -41,8 +41,9 @@ class PINN(nn.Module):
         self.output = nn.Linear(64, output_dim)
 
         # Kinetic parameters
-        self.mu_max = nn.Parameter(torch.tensor([0.5]))
         # self.mu_max = torch.tensor([0.75], device=DEVICE)
+        
+        self.mu_max = nn.Parameter(torch.tensor([0.5]))
         self.alpha = nn.Parameter(torch.tensor([0.5]))
         self.beta = nn.Parameter(torch.tensor([0.5]))
 
@@ -57,27 +58,14 @@ class PINN(nn.Module):
         return x
 
 
-def loss_fn(
-    net: torch.nn.Module,
-    t_start: Union[np.float32, torch.Tensor] = T_START,
-    t_end: Union[np.float32, torch.Tensor] = T_END,
-    model: str = "A",
-) -> torch.Tensor:
+def loss_fn(net: torch.nn.Module, t_start: Union[np.float32, torch.Tensor] = T_START, t_end: Union[np.float32, torch.Tensor] = T_END, model: str = "A") -> torch.Tensor:
+
     if isinstance(t_start, torch.Tensor):
         t_start = t_start.item()
     if isinstance(t_end, torch.Tensor):
         t_end = t_end.item()
 
-    t = (
-        torch.linspace(
-            t_start,
-            t_end,
-            steps=NUM_COLLOCATION,
-        )
-        .view(-1, 1)
-        .requires_grad_(True)
-        .to(DEVICE)
-    )
+    t = (torch.linspace(t_start, t_end, steps=NUM_COLLOCATION).view(-1, 1).requires_grad_(True).to(DEVICE))
     
     F = torch.tensor([Fs(i) for i in t], dtype=torch.float32).view(-1, 1).to(DEVICE)
     V = torch.tensor([Volume(i) for i in t], dtype=torch.float32).view(-1, 1).to(DEVICE)
@@ -107,16 +95,15 @@ def loss_fn(
     error_dSdt = nn.MSELoss()(dSdt_pred, -mu * X_pred / Y_XS + F / V * (S_IN - S_pred))
     error_dPdt = nn.MSELoss()(dPdt_pred, alpha * mu * X_pred - P_pred * F / V)
 
-    error_ode = error_dXdt + error_dSdt + error_dPdt
-    error_ode = 1/3 * error_ode # Take the average of the errors
-
-    return error_ode
+    return error_dXdt, error_dSdt, error_dPdt
 
 
 def main(train_df: pd.DataFrame,
          full_df: pd.DataFrame,
          num_epochs: int = 10000,
-         model: str = "A") -> tuple:
+         model: str = "A",
+         t_start: float = T_START,
+         t_end: float = T_END) -> tuple:
     
     t_train = numpy_to_tensor(train_df["RTime"].values)
     X_train = numpy_to_tensor(train_df["Biomass"].values)
@@ -142,10 +129,11 @@ def main(train_df: pd.DataFrame,
     for epoch in range(num_epochs):
         optimizer.zero_grad()
         u_pred = net.forward(t_train)
-        
+        error_P = nn.MSELoss()(u_pred[:, 2].view(-1, 1), P_train)
         loss_data = nn.MSELoss()(u_pred, u_train) * w_data
-        loss_ic = nn.MSELoss()(u_pred[0, :], u_train[0, :]) * w_ic
-        loss_ode = loss_fn(net, T_START, T_END, model) * w_ode
+        # loss_ic = nn.MSELoss()(u_pred[0, :], u_train[0, :]) * w_ic
+        error_dXdt, error_dSdt, error_dPdt = loss_fn(net, t_start, t_end, model)
+        loss_ode = (error_dXdt + error_dSdt + error_dPdt) * w_ode
 
         # loss = loss_data + loss_ode + loss_ic
         
@@ -176,7 +164,7 @@ def main(train_df: pd.DataFrame,
     u_pred.columns = ["Biomass", "Glucose", "Protein"]
     u_pred["RTime"] = t_test.detach().cpu().numpy()
 
-    return net, u_pred
+    return net, u_pred, error_P, error_dPdt
 
 
 def plot_net_predictions(

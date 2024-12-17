@@ -1,10 +1,16 @@
 Model A
- * mu_max = 0.4607
- * alpha = 0.3676
+ * MSE P = 0.0019
+ * MSE dP = 0.0001
+ * mu_max = 0.1031
+ * alpha = 0.0537
 Model B
- * mu_max = 0.4873
- * alpha = 0.2191
+ * MSE P = 0.0036
+ * MSE dP = 0.0033
+ * mu_max = 0.4641
+ * alpha = 3.0448
 Model C
- * mu_max = 0.4627
- * alpha = 0.5870
- * beta = 0.4050
+ * MSE P = 0.0021
+ * MSE dP = 0.0055
+ * mu_max = 0.0357
+ * alpha = 0.7143
+ * beta = 0.0867

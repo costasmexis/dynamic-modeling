@@ -92,9 +92,7 @@ def GetDataset(
 
 ) -> pd.DataFrame:
     X, S, P, V = simulate(mumax, Ks, Yxs, alpha, Sin)
-    df = pd.DataFrame(
-        {"RTime": t_sim, "Biomass": X, "Glucose": S, "Protein": P, "V": V}
-    )
+    df = pd.DataFrame({"RTime": t_sim, "Biomass": X, "Glucose": S, "Protein": P, "V": V})
     if noise:
         # Make the noise reproducible
         np.random.seed(0)

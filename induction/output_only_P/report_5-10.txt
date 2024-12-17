@@ -1,0 +1,16 @@
+Model A
+ * MSE P = 0.0184
+ * MSE dP = 0.0019
+ * mu_max = 0.7500
+ * alpha = 0.2330
+Model B
+ * MSE P = 0.0580
+ * MSE dP = 0.0562
+ * mu_max = 0.7500
+ * alpha = 2.5601
+Model C
+ * MSE P = 0.0039
+ * MSE dP = 0.0319
+ * mu_max = 0.7500
+ * alpha = 0.7830
+ * beta = 0.1596

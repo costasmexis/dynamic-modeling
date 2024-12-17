@@ -1,0 +1,10 @@
+Model A
+ * mu_max = 0.4607
+ * alpha = 0.3676
+Model B
+ * mu_max = 0.4873
+ * alpha = 0.2191
+Model C
+ * mu_max = 0.4627
+ * alpha = 0.5870
+ * beta = 0.4050
